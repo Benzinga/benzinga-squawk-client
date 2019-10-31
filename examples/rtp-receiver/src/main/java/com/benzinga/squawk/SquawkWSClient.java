@@ -68,6 +68,7 @@ public class SquawkWSClient extends WebSocketClient {
           case MESSAGE_TYPE_AUTH:
             if (msg.has("error")) {
               log.error("Authentication failed {}", msg.get("error").getAsString());
+              this.closeWS();
             } else {
               this.sendSdpOffer(sdpOffer());
               log.error("Authentication successful. Sending SDP Offer");
@@ -75,15 +76,15 @@ public class SquawkWSClient extends WebSocketClient {
             break;
           case MESSAGE_TYPE_SDP_OFFER:
             if (msg.has("error")) {
-              log.error("Failed to negotiate SDP. Error: {}", msg.get("error").getAsString());              
+              log.error("Failed to negotiate SDP. Error: {}", msg.get("error").getAsString());
+              this.closeWS();
             } else {
               log.info("SDP negitiation successfull");
             }
             break;
           case MESSAGE_TYPE_MEDIA_OVERRIDE:  
             log.info("Received media-override message. Session ended. Looks like signed in from another session using same API key.");
-            log.info("Closing WebSocket connection.");
-            this.close();
+            this.closeWS();
             break;           
           case MESSAGE_TYPE_PING:  
             log.info("Pong Received");
@@ -110,6 +111,10 @@ public class SquawkWSClient extends WebSocketClient {
     this.send(pingObj.toString());
   }
 
+  private void closeWS() {
+    log.info("Closing WebSocket connection.");
+    this.close();
+  }
   private void sendAuthMessage() {
     log.info("Authenticating");
     JsonObject authObj = new JsonObject();
