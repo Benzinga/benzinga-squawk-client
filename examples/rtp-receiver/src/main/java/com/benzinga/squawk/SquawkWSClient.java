@@ -6,6 +6,8 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.Map;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.drafts.Draft;
@@ -115,6 +117,7 @@ public class SquawkWSClient extends WebSocketClient {
     log.info("Closing WebSocket connection.");
     this.close();
   }
+  
   private void sendAuthMessage() {
     log.info("Authenticating");
     JsonObject authObj = new JsonObject();
@@ -144,16 +147,22 @@ public class SquawkWSClient extends WebSocketClient {
   }  
   
   private String sdpOffer() {
-    String rtpSdpOffer = "v=0\n" + 
-        "t=0 0\n" + 
-        "m=audio " + conf.getString("receiver.port") + " RTP/AVP 98\n" + 
-        "c=IN IP4 " + conf.getString("receiver.ip") + "\n" + 
-        "a=recvonly\n" + 
-        "a=rtpmap:98 opus/48000/2\n" + 
-        "a=fmtp:98 stereo=0; sprop-stereo=0; useinbandfec=1";
-    log.info("SDP Offer \n{}", rtpSdpOffer);
-    this.writeSdpOffertoFile(rtpSdpOffer);
-    return rtpSdpOffer;
+    if (conf.hasPath("receiver.sdpoffer.file") && !"<sdp_offer_file_path>".equals(conf.getString("receiver.sdpoffer.file"))) {
+      return this.getSDPOffer(conf.getString("receiver.sdpoffer.file"));
+    } else {
+      log.info("Generating a sample SDP Offer using IP {} and Port {}", conf.getString("receiver.ip"), conf.getString("receiver.port"));
+      log.info("If you want to use your SDP offer, then please set env RECEIVER_SDP_OFFER_FILE");
+      String rtpSdpOffer = "v=0\n" + 
+          "t=0 0\n" + 
+          "m=audio " + conf.getString("receiver.port") + " RTP/AVP 98\n" + 
+          "c=IN IP4 " + conf.getString("receiver.ip") + "\n" + 
+          "a=recvonly\n" + 
+          "a=rtpmap:98 opus/48000/2\n" + 
+          "a=fmtp:98 stereo=0; sprop-stereo=0; useinbandfec=1";
+      log.info("SDP Offer \n{}", rtpSdpOffer);
+      this.writeSdpOffertoFile(rtpSdpOffer);
+      return rtpSdpOffer;
+    }
   } 
   
   private void writeSdpOffertoFile(String rtpSdpOffer) {
@@ -177,7 +186,20 @@ public class SquawkWSClient extends WebSocketClient {
     } catch (IOException e) {
       log.error("Error occured while writting the SDP offer to file" , e);
     }    
-    
+  }
+  
+  private String getSDPOffer(String filePath) {
+    String rtpSdpOffer = "";
+    try
+    {
+      rtpSdpOffer = new String ( Files.readAllBytes( Paths.get(filePath) ) );
+      log.info("SDP Offer from file \n{}", rtpSdpOffer);
+    } 
+    catch (IOException e) 
+    {
+      log.error("Error occured while reading the SDP offer from file" , e);
+    }    
+    return rtpSdpOffer;
   }
     
   public static void main( String[] args ) throws URISyntaxException {
