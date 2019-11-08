@@ -9,6 +9,9 @@ import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Map;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.drafts.Draft;
 import org.java_websocket.handshake.ServerHandshake;
@@ -38,6 +41,14 @@ public class SquawkWSClient extends WebSocketClient {
   private static final String MESSAGE_TYPE_SDP_OFFER = "sdp-offer";
   private static final String MESSAGE_TYPE_LOGOUT = "logout";
   private static final String MESSAGE_TYPE_MEDIA_OVERRIDE = "media-override";
+  // The retry interval in seconds for reconnecting after WS connection closed unexpectedly.  
+  private static final long CONNECTION_RETRY_INTERVAL = 20L;
+  // For what period of time the client should keep retrying at CONNECTION_RETRY_INTERVAL
+  private static final long RETRY_PERIOD = 60L * 15L;
+    
+  ScheduledExecutorService scheduledExecutorService;
+    
+  private boolean connectionExplicitlyClosed = false;
   
   public SquawkWSClient(String serverURI) throws URISyntaxException {
     super(new URI(serverURI));        
@@ -58,7 +69,10 @@ public class SquawkWSClient extends WebSocketClient {
 
   @Override
   public void onOpen( ServerHandshake handshakedata ) {
-      log.info("WebSocket connection opened");
+      log.info("WebSocket connection opened");    
+      if (null != scheduledExecutorService && !scheduledExecutorService.isShutdown()) {
+        scheduledExecutorService.shutdown();
+      }
       sendAuthMessage();
   }
 
@@ -97,6 +111,17 @@ public class SquawkWSClient extends WebSocketClient {
   @Override
   public void onClose( int code, String reason, boolean remote ) {
       log.info( "Connection closed by " + ( remote ? "remote peer" : "us" ) + " Code: " + code + " Reason: " + reason );
+      if (!this.connectionExplicitlyClosed) {        
+        scheduledExecutorService = Executors.newScheduledThreadPool(1);
+        scheduledExecutorService.scheduleAtFixedRate(
+            () -> {
+              log.info("Retrying connecting the Sqauwk");
+              this.reconnect();
+            },
+            CONNECTION_RETRY_INTERVAL, 
+            RETRY_PERIOD, 
+            TimeUnit.SECONDS);
+      }
   }
 
   @Override
@@ -115,6 +140,7 @@ public class SquawkWSClient extends WebSocketClient {
 
   private void closeWS() {
     log.info("Closing WebSocket connection.");
+    this.connectionExplicitlyClosed= true;
     this.close();
   }
   
@@ -206,7 +232,7 @@ public class SquawkWSClient extends WebSocketClient {
     conf = ConfigFactory.load(); 
     log.info("Squawk Address : {}", conf.getString("bz.squawk.addr")); 
     SquawkWSClient c = new SquawkWSClient(conf.getString("bz.squawk.addr")); // more about drafts here: http://github.com/TooTallNate/Java-WebSocket/wiki/Drafts
-    c.connect();
+    c.connect();  
     Runtime.getRuntime().addShutdownHook(new Thread() 
     { 
       public void run() 
