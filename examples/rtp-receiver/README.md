@@ -23,6 +23,7 @@ Please note that the execution is dependent on configuration, which can be done 
 
 | Config parameter       |  Equivalent Env variable  | Description
 | ------------- |-------------| -----
+| bz.squawk.addr        | BZ_SQUAWK_ADDR | Squawk websocket remote address
 | bz.squawk.apiKey      | BZ_SQUAWK_APIKEY | API key received from Benzinga Licencing team 
 | bz.squawk.room      | BZ_SQUAWK_ROOM | Room to join. It must be `PRO`
 | bz.squawk.role      | BZ_SQUAWK_ROLE | Room to join. It must be `rtpreceiver`
