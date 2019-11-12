@@ -6,7 +6,12 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.Map;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.drafts.Draft;
 import org.java_websocket.handshake.ServerHandshake;
@@ -36,6 +41,14 @@ public class SquawkWSClient extends WebSocketClient {
   private static final String MESSAGE_TYPE_SDP_OFFER = "sdp-offer";
   private static final String MESSAGE_TYPE_LOGOUT = "logout";
   private static final String MESSAGE_TYPE_MEDIA_OVERRIDE = "media-override";
+  // The retry interval in seconds for reconnecting after WS connection closed unexpectedly.  
+  private static final long CONNECTION_RETRY_INTERVAL = 20L;
+  // For what period of time the client should keep retrying at CONNECTION_RETRY_INTERVAL
+  private static final long RETRY_PERIOD = 60L * 15L;
+    
+  ScheduledExecutorService scheduledExecutorService;
+    
+  private boolean connectionExplicitlyClosed = false;
   
   public SquawkWSClient(String serverURI) throws URISyntaxException {
     super(new URI(serverURI));        
@@ -56,7 +69,10 @@ public class SquawkWSClient extends WebSocketClient {
 
   @Override
   public void onOpen( ServerHandshake handshakedata ) {
-      log.info("WebSocket connection opened");
+      log.info("WebSocket connection opened");    
+      if (null != scheduledExecutorService && !scheduledExecutorService.isShutdown()) {
+        scheduledExecutorService.shutdown();
+      }
       sendAuthMessage();
   }
 
@@ -95,6 +111,17 @@ public class SquawkWSClient extends WebSocketClient {
   @Override
   public void onClose( int code, String reason, boolean remote ) {
       log.info( "Connection closed by " + ( remote ? "remote peer" : "us" ) + " Code: " + code + " Reason: " + reason );
+      if (!this.connectionExplicitlyClosed) {        
+        scheduledExecutorService = Executors.newScheduledThreadPool(1);
+        scheduledExecutorService.scheduleAtFixedRate(
+            () -> {
+              log.info("Retrying connecting the Sqauwk");
+              this.reconnect();
+            },
+            CONNECTION_RETRY_INTERVAL, 
+            RETRY_PERIOD, 
+            TimeUnit.SECONDS);
+      }
   }
 
   @Override
@@ -113,8 +140,10 @@ public class SquawkWSClient extends WebSocketClient {
 
   private void closeWS() {
     log.info("Closing WebSocket connection.");
+    this.connectionExplicitlyClosed= true;
     this.close();
   }
+  
   private void sendAuthMessage() {
     log.info("Authenticating");
     JsonObject authObj = new JsonObject();
@@ -144,16 +173,22 @@ public class SquawkWSClient extends WebSocketClient {
   }  
   
   private String sdpOffer() {
-    String rtpSdpOffer = "v=0\n" + 
-        "t=0 0\n" + 
-        "m=audio " + conf.getString("receiver.port") + " RTP/AVP 98\n" + 
-        "c=IN IP4 " + conf.getString("receiver.ip") + "\n" + 
-        "a=recvonly\n" + 
-        "a=rtpmap:98 opus/48000/2\n" + 
-        "a=fmtp:98 stereo=0; sprop-stereo=0; useinbandfec=1";
-    log.info("SDP Offer \n{}", rtpSdpOffer);
-    this.writeSdpOffertoFile(rtpSdpOffer);
-    return rtpSdpOffer;
+    if (conf.hasPath("receiver.sdpoffer.file") && !"<sdp_offer_file_path>".equals(conf.getString("receiver.sdpoffer.file"))) {
+      return this.getSDPOffer(conf.getString("receiver.sdpoffer.file"));
+    } else {
+      log.info("Generating a sample SDP Offer using IP {} and Port {}", conf.getString("receiver.ip"), conf.getString("receiver.port"));
+      log.info("If you want to use your SDP offer, then please set env RECEIVER_SDP_OFFER_FILE");
+      String rtpSdpOffer = "v=0\n" + 
+          "t=0 0\n" + 
+          "m=audio " + conf.getString("receiver.port") + " RTP/AVP 98\n" + 
+          "c=IN IP4 " + conf.getString("receiver.ip") + "\n" + 
+          "a=recvonly\n" + 
+          "a=rtpmap:98 opus/48000/2\n" + 
+          "a=fmtp:98 stereo=0; sprop-stereo=0; useinbandfec=1";
+      log.info("SDP Offer \n{}", rtpSdpOffer);
+      this.writeSdpOffertoFile(rtpSdpOffer);
+      return rtpSdpOffer;
+    }
   } 
   
   private void writeSdpOffertoFile(String rtpSdpOffer) {
@@ -177,14 +212,27 @@ public class SquawkWSClient extends WebSocketClient {
     } catch (IOException e) {
       log.error("Error occured while writting the SDP offer to file" , e);
     }    
-    
+  }
+  
+  private String getSDPOffer(String filePath) {
+    String rtpSdpOffer = "";
+    try
+    {
+      rtpSdpOffer = new String ( Files.readAllBytes( Paths.get(filePath) ) );
+      log.info("SDP Offer from file \n{}", rtpSdpOffer);
+    } 
+    catch (IOException e) 
+    {
+      log.error("Error occured while reading the SDP offer from file" , e);
+    }    
+    return rtpSdpOffer;
   }
     
   public static void main( String[] args ) throws URISyntaxException {
     conf = ConfigFactory.load(); 
     log.info("Squawk Address : {}", conf.getString("bz.squawk.addr")); 
     SquawkWSClient c = new SquawkWSClient(conf.getString("bz.squawk.addr")); // more about drafts here: http://github.com/TooTallNate/Java-WebSocket/wiki/Drafts
-    c.connect();
+    c.connect();  
     Runtime.getRuntime().addShutdownHook(new Thread() 
     { 
       public void run() 
