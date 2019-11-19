@@ -48,7 +48,7 @@ public class SquawkWSClient extends WebSocketClient {
     
   ScheduledExecutorService scheduledExecutorService;
     
-  private boolean connectionExplicitlyClosed = false;
+  private boolean shouldRetryConnection = true;
   
   public SquawkWSClient(String serverURI) throws URISyntaxException {
     super(new URI(serverURI));        
@@ -70,8 +70,10 @@ public class SquawkWSClient extends WebSocketClient {
   @Override
   public void onOpen( ServerHandshake handshakedata ) {
       log.info("WebSocket connection opened");    
-      if (null != scheduledExecutorService && !scheduledExecutorService.isShutdown()) {
-        scheduledExecutorService.shutdown();
+      if (null != scheduledExecutorService && !scheduledExecutorService.isShutdown()) {        
+        scheduledExecutorService.shutdownNow();
+        // To start retrying when next time it disconnect
+        shouldRetryConnection = true;
       }
       sendAuthMessage();
   }
@@ -111,16 +113,24 @@ public class SquawkWSClient extends WebSocketClient {
   @Override
   public void onClose( int code, String reason, boolean remote ) {
       log.info( "Connection closed by " + ( remote ? "remote peer" : "us" ) + " Code: " + code + " Reason: " + reason );
-      if (!this.connectionExplicitlyClosed) {        
-        scheduledExecutorService = Executors.newScheduledThreadPool(1);
+      if (this.shouldRetryConnection) {    
+        scheduledExecutorService = Executors.newScheduledThreadPool(1);        
         scheduledExecutorService.scheduleAtFixedRate(
             () -> {
               log.info("Retrying connecting the Sqauwk");
               this.reconnect();
             },
             CONNECTION_RETRY_INTERVAL, 
-            RETRY_PERIOD, 
-            TimeUnit.SECONDS);
+            CONNECTION_RETRY_INTERVAL, 
+            TimeUnit.SECONDS);        
+        scheduledExecutorService.schedule(
+            () -> {  
+              System.out.println("Not able to re-connect to Squawk. Stopping retries." );               
+              scheduledExecutorService.shutdown();
+            }, 
+            RETRY_PERIOD,TimeUnit.SECONDS);
+        // To stop starting any new retry scheduler as the one scheduler is started
+        shouldRetryConnection = false;
       }
   }
 
@@ -140,7 +150,7 @@ public class SquawkWSClient extends WebSocketClient {
 
   private void closeWS() {
     log.info("Closing WebSocket connection.");
-    this.connectionExplicitlyClosed= true;
+    this.shouldRetryConnection= false;
     this.close();
   }
   
