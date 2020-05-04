@@ -1,9 +1,11 @@
 package com.benzinga.squawk.models;
 
 import java.util.List;
+import com.google.gson.annotations.SerializedName;
 
 public class ActiveBroadcastersResponse extends Response {
  
+  @SerializedName("existingPresenters")
   private List<Broadcaster> broadcasters;
 
   public ActiveBroadcastersResponse(String id, String type, List<Broadcaster> broadcasters) {

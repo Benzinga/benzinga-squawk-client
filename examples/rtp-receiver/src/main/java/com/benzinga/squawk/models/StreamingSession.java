@@ -1,15 +1,19 @@
 package com.benzinga.squawk.models;
 
+import java.io.File;
+
 public class StreamingSession {
   private Broadcaster broadcaster;  
   private int receiverPort;
   private String sdpOffer;
   private String sdpAnswer;
+  private File sdpOfferFile;
   
-  public StreamingSession(Broadcaster broadcaster, int receiverPort, String sdpOffer) {
+  public StreamingSession(Broadcaster broadcaster, int receiverPort, String sdpOffer, File sdpOfferFile) {
     this.broadcaster = broadcaster;
     this.receiverPort = receiverPort;
     this.sdpOffer = sdpOffer;
+    this.sdpOfferFile = sdpOfferFile;
   }
 
   public String getSdpOffer() {
@@ -34,6 +38,10 @@ public class StreamingSession {
 
   public int getReceiverPort() {
     return receiverPort;
-  } 
-  
+  }
+
+  public File getSdpOfferFile() {
+    return sdpOfferFile;
+  }
+   
 }

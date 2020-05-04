@@ -13,17 +13,15 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import org.java_websocket.client.WebSocketClient;
-import org.java_websocket.drafts.Draft;
 import org.java_websocket.handshake.ServerHandshake;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import com.benzinga.squawk.models.ActiveBroadcastersResponse;
-import com.benzinga.squawk.models.StreamingSession;
 import com.benzinga.squawk.models.Broadcaster;
+import com.benzinga.squawk.models.StreamingSession;
 import com.fasterxml.uuid.Generators;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
@@ -120,7 +118,7 @@ public class SquawkWSClient extends WebSocketClient {
               log.error("Joining Room failed {}", msg.get("error").getAsString());
               this.closeWS();
             } else {
-              log.info("Joined Room successful. Sending SDP Offer");
+              log.info("Joined Room successful. Should connect if any active broadcaster found.");
               ActiveBroadcastersResponse activeBcasterResp = gson.fromJson(msg, ActiveBroadcastersResponse.class);
               activeBcasterResp.getExistingBroadcasters().forEach((broadcaster) -> {
                 this.sendSdpOffer(generateSdpOffer(broadcaster), broadcaster);
@@ -139,13 +137,15 @@ public class SquawkWSClient extends WebSocketClient {
             }
             break;
           case MESSAGE_TYPE_NEW_PRESENTER_ARRIVED:
-            Broadcaster broadcaster = gson.fromJson(msg.get("user").getAsString(), Broadcaster.class);
+            Broadcaster broadcaster = gson.fromJson(msg.get("user").getAsJsonObject(), Broadcaster.class);
             this.sendSdpOffer(generateSdpOffer(broadcaster), broadcaster);
             break;
           case MESSAGE_TYPE_PRESENTER_LEFT:
             String userId = msg.get("userId").getAsString();
             StreamingSession endedSession = this.activeStreams.remove(userId);
             sessionListener.onBroadcasterLeft(endedSession);
+            endedSession.getSdpOfferFile().delete();
+            availablePorts.push(endedSession.getReceiverPort());
             break;
           case MESSAGE_TYPE_MEDIA_OVERRIDE:  
             log.info("Received media-override message. Session ended. Looks like signed in from another session using same API key/token.");
@@ -253,14 +253,21 @@ public class SquawkWSClient extends WebSocketClient {
         "a=rtpmap:98 opus/48000/2\n" + 
         "a=fmtp:98 stereo=0; sprop-stereo=0; useinbandfec=1";
     log.info("SDP Offer \n{}", rtpSdpOffer);
-    this.writeSdpOffertoFile(rtpSdpOffer, broadcaster.getUserId());
-    StreamingSession streamingSession = new StreamingSession(broadcaster, port, rtpSdpOffer);
+    File sdpOfferFilePath = this.writeSdpOffertoFile(rtpSdpOffer, broadcaster.getUserId());
+    StreamingSession streamingSession = new StreamingSession(broadcaster, port, rtpSdpOffer, sdpOfferFilePath);
     activeStreams.put(broadcaster.getUserId(), streamingSession);
     return rtpSdpOffer;    
   } 
   
-  // Write the SDP offer to a file with appending broadcaster id to file name
-  private void writeSdpOffertoFile(String rtpSdpOffer, String broadcasterId) {
+
+  /**
+   * 
+   * Write the SDP offer to a file with appending broadcaster id to file name
+   * @param rtpSdpOffer
+   * @param broadcasterId
+   * @return File path
+   */
+  private File writeSdpOffertoFile(String rtpSdpOffer, String broadcasterId) {
     String path = System.getProperty("user.home") + File.separator + "Documents";
     path += File.separator + "bz-squawk-sdpoffers";
     File customDir = new File(path);
@@ -280,24 +287,50 @@ public class SquawkWSClient extends WebSocketClient {
       log.info("You can open this file in VLC to play live squawk audio stream");
     } catch (IOException e) {
       log.error("Error occured while writting the SDP offer to file" , e);
-    }    
+    }
+    return sdpOfferfile;
   }
       
   public static void main( String[] args ) throws URISyntaxException {
+    Map<String, Process> activeFfpmegProcesses = new HashMap<String, Process>();
     Config conf = ConfigFactory.load(); 
     log.info("Squawk Address : {}", conf.getString("bz.squawk.addr")); 
     SquawkWSClient c = new SquawkWSClient(conf.getString("bz.squawk.addr"), conf, new StreamingSessionListener(){
     
       @Override
       public void onBroadcasterLeft(StreamingSession streamingSession) {
-        // connect stream further
-        log.info("New broadcaster {} joined. Incoming stream on port {}", streamingSession.getBroadcaster().getUsername(), streamingSession.getReceiverPort());        
+        
+        // disconnect the stream
+        log.info("Broadcaster: {} left. Incoming stream on port {} cutoff.", streamingSession.getBroadcaster().getUsername(), streamingSession.getReceiverPort());
+        
+        // stopping ffmpeg to save the stream
+        Process p =activeFfpmegProcesses.remove(streamingSession.getBroadcaster().getUserId());
+        p.destroy();
+        
       }
     
       @Override
       public void onBroadcasterJoined(StreamingSession streamingSession) {
-        // disconnect the stream
-        log.info("Broadcaster {} left. Incoming stream on port {} cutoff", streamingSession.getBroadcaster().getUsername(), streamingSession.getReceiverPort());
+        
+        // connect stream further        
+        log.info("New broadcaster: {} joined. Incoming stream on port {}", streamingSession.getBroadcaster().getUsername(), streamingSession.getReceiverPort());
+        
+        // starting ffmpeg to save the stream
+        String outputFile = System.getProperty("user.home") + "/out_" + streamingSession.getBroadcaster().getUserId() + ".ogg";
+        String ffmpegCmd = "ffmpeg -protocol_whitelist file,crypto,udp,rtp -acodec opus -i " 
+                            + streamingSession.getSdpOfferFile().getPath() 
+                            + " -acodec libopus " 
+                            + outputFile;
+        
+        
+        try {
+          Process p = Runtime.getRuntime().exec(ffmpegCmd);
+          activeFfpmegProcesses.put(streamingSession.getBroadcaster().getUserId(), p);
+          log.info("Incoming stream being saved into file {}", outputFile);
+        } catch (IOException e) {
+          log.error("Unable to record and save incoming RTP stream", e);
+        }
+        
       }
     }); 
     c.connect();  
