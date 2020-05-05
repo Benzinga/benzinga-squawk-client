@@ -9,6 +9,7 @@ Squawk WebSocket client implementation for connecting to squawk and receiving RT
 3. API key for Benzinga Squawk. Contact Benzinga licensing team at  licensing@benzinga.com, if you don't have one.
 4. Squawk WebSocket address. Contact Benzinga licensing team at  licensing@benzinga.com for that.
 5. Publicly open and accessible IP and few ports, 5 should be enough, on your end. Multiple ports needed in case there are more than one broadcaster is active
+6. [ffmpeg](https://www.ffmpeg.org/) command-line utility. It is for saving the incoming audio stream in a file using [StreamingSessionListener](src/main/java/com/benzinga/squawk/StreamingSessionListener.java). You can comment/remove that part from [SquawkWSClient](src/main/java/com/benzinga/squawk/SquawkWSClient.java) if you want to consume the incoming RTP differently.
 
 ## Installing and Executing
 
@@ -54,4 +55,4 @@ Keep the streaming ON for few minutes to receive several squawks. And then play 
 
 ## Consuming the incoming streams
 
-Consuming incoming stream mostly include forward/rebroadcast. The squawk RTP client provides `StreamingSessionListener` [StreamingSessionListener](src/main/java/com/benzinga/squawk/StreamingSessionListener.java), which has callbacks `onBroadcasterJoined` and `onBroadcasterLeft`. It provides the associated [StreamingSession](src/main/java/com/benzinga/squawk/models/StreamingSession.java) for the broadcaster. It contains all the information required to consume/cutoff the stream.
+Consuming incoming stream mostly include forward/rebroadcast. The squawk RTP client provides [StreamingSessionListener](src/main/java/com/benzinga/squawk/StreamingSessionListener.java), which has callbacks `onBroadcasterJoined` and `onBroadcasterLeft`. It provides the associated [StreamingSession](src/main/java/com/benzinga/squawk/models/StreamingSession.java) for the broadcaster. It contains all the information required to consume/cutoff the stream.
