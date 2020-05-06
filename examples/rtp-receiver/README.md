@@ -29,7 +29,7 @@ Please note that the execution is dependent on configuration, which can be done 
 | bz.squawk.room      | BZ_SQUAWK_ROOM | Room to join. It must be `PRO`
 | bz.squawk.role      | BZ_SQUAWK_ROLE | Room to join. It must be `rtpreceiver`
 | receiver.ip      | RECEIVER_IP | The IP address where you want to receive RTP stream. It must be publicly accessible IP
-| receiver.ports      | RECEIVER_PORTS | Some open ports to receive RTP streams. Need multiple ports opened in case of more than one broadcaster is active. Max 5 ports should be more than enough.
+| receiver.ports      | RECEIVER_PORTS | Some open ports to receive RTP streams. It should be comma-separated int values. Need multiple ports opened in case of more than one broadcaster is active. Max 5 ports should be more than enough.
 
  Please note that if you set the environment variable for a config parameter, then the `application.conf` value will be overridden by the env values. 
 
