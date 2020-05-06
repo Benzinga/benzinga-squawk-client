@@ -6,7 +6,9 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Stack;
 import java.util.concurrent.Executors;
@@ -67,7 +69,7 @@ public class SquawkWSClient extends WebSocketClient {
   public SquawkWSClient(String serverURI, Config conf, StreamingSessionListener sessionListener) throws URISyntaxException {
     super(new URI(serverURI));        
     this.conf = conf;
-    this.availablePorts.addAll(conf.getIntList("receiver.ports"));
+    this.initAvailablePortsStack(conf.getString("receiver.ports").split(",")); 
     this.sessionListener = sessionListener;
     this.setConnectionLostTimeout(30);
   }
@@ -75,7 +77,7 @@ public class SquawkWSClient extends WebSocketClient {
   public SquawkWSClient(URI serverURI, Config conf, StreamingSessionListener sessionListener) {
       super( serverURI );
       this.conf = conf;
-      this.availablePorts.addAll(conf.getIntList("receiver.ports"));
+      this.initAvailablePortsStack(conf.getString("receiver.ports").split(","));
       this.sessionListener = sessionListener;
       this.setConnectionLostTimeout(30);
   }
@@ -83,10 +85,23 @@ public class SquawkWSClient extends WebSocketClient {
   public SquawkWSClient(URI serverUri, Map<String, String> httpHeaders, Config conf, StreamingSessionListener sessionListener) {
       super(serverUri, httpHeaders);
       this.conf = conf;
-      this.availablePorts.addAll(conf.getIntList("receiver.ports"));
+      this.initAvailablePortsStack(conf.getString("receiver.ports").split(","));
       this.sessionListener = sessionListener;
       this.setConnectionLostTimeout(30);
   }
+  
+  private void initAvailablePortsStack(String[] strPorts) {    
+    for (int i = 0; i < strPorts.length; i++) {
+      try {
+        int p = Integer.parseInt(strPorts[i]);
+        this.availablePorts.push(p);
+      } catch (NumberFormatException e) {
+        log.error("Error parsing available ports from config", e);
+        log.info("RECEIVER_PORTS should be comma-separated integer values with no space in between");
+        System.exit(0);
+      }
+    }
+  }  
 
   @Override
   public void onOpen( ServerHandshake handshakedata ) {
