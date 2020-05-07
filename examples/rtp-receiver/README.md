@@ -29,7 +29,7 @@ Please note that the execution is dependent on configuration, which can be done 
 | bz.squawk.room      | BZ_SQUAWK_ROOM | Room to join. It must be `PRO`
 | bz.squawk.role      | BZ_SQUAWK_ROLE | Room to join. It must be `rtpreceiver`
 | receiver.ip      | RECEIVER_IP | The IP address where you want to receive RTP stream. It must be publicly accessible IP
-| receiver.ports      | RECEIVER_PORTS | Some open ports to receive RTP streams. It should be comma-separated int values. Need multiple ports opened in case of more than one broadcaster is active. Max 5 ports should be more than enough.
+| receiver.ports      | RECEIVER_PORTS | Some open ports to receive RTP streams. It should be comma-separated int values and not consecutive ports. There should be some gap between ports because RTP uses the next available port for RTCP. Need multiple ports opened in case of more than one broadcaster is active. Max 5 ports should be more than enough.
 
  Please note that if you set the environment variable for a config parameter, then the `application.conf` value will be overridden by the env values. 
 
@@ -53,6 +53,6 @@ Keep the streaming ON for few minutes to receive several squawks. And then play 
 - **Using VLC:**  Open the SDP offer file in the VLC player (Media > Open File) and wait for the next squawk from the Benzinga team. This option will probably work only if the VLC player is on the same machine where the stream is being delivered.
 
 
-## Consuming the incoming streams
+## Consuming the Incoming Streams
 
 Consuming incoming stream mostly include forward/rebroadcast. The squawk RTP client provides [StreamingSessionListener](src/main/java/com/benzinga/squawk/StreamingSessionListener.java), which has callbacks `onBroadcasterJoined` and `onBroadcasterLeft`. It provides the associated [StreamingSession](src/main/java/com/benzinga/squawk/models/StreamingSession.java) for the broadcaster. It contains all the information required to consume/cutoff the stream.
