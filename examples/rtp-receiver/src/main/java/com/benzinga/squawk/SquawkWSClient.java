@@ -1,14 +1,14 @@
 package com.benzinga.squawk;
 
+import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.util.Arrays;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Stack;
 import java.util.concurrent.Executors;
@@ -59,6 +59,8 @@ public class SquawkWSClient extends WebSocketClient {
   ScheduledExecutorService scheduledExecutorService;
   
   private final Stack<Integer> availablePorts = new Stack<Integer>();
+  
+  // Map of broadcasterId:associated StreamingSession
   private Map<String, StreamingSession> activeStreams = new HashMap<String, StreamingSession>();
 
   // Map of messageId:broadcasterId of sdp offer
@@ -158,9 +160,7 @@ public class SquawkWSClient extends WebSocketClient {
           case MESSAGE_TYPE_PRESENTER_LEFT:
             String userId = msg.get("userId").getAsString();
             StreamingSession endedSession = this.activeStreams.remove(userId);
-            sessionListener.onBroadcasterLeft(endedSession);
-            endedSession.getSdpOfferFile().delete();
-            availablePorts.push(endedSession.getReceiverPort());
+            this.endSession(endedSession);
             break;
           case MESSAGE_TYPE_MEDIA_OVERRIDE:  
             log.info("Received media-override message. Session ended. Looks like signed in from another session using same API key/token.");
@@ -171,10 +171,21 @@ public class SquawkWSClient extends WebSocketClient {
             break;         
         }     
   }
+  
+  private void endSession(StreamingSession streamingSession) {
+    sessionListener.onBroadcasterLeft(streamingSession);
+    streamingSession.getSdpOfferFile().delete();
+    availablePorts.push(streamingSession.getReceiverPort());
+  }
 
   @Override
   public void onClose( int code, String reason, boolean remote ) {
-      log.info( "Connection closed by " + ( remote ? "remote peer" : "us" ) + " Code: " + code + " Reason: " + reason );
+      log.info("Connection closed by " + ( remote ? "remote peer" : "us" ) + " Code: " + code + " Reason: " + reason );
+      log.info("Cleaning up: Closing active streaming sesions..."); 
+      this.activeStreams.forEach((broadcasterId, streamingSession) -> {
+        this.endSession(streamingSession);
+      });
+      this.activeStreams.clear();      
       if (this.shouldRetryConnection) {    
         scheduledExecutorService = Executors.newScheduledThreadPool(1);        
         scheduledExecutorService.scheduleAtFixedRate(
@@ -212,8 +223,7 @@ public class SquawkWSClient extends WebSocketClient {
 
   private void closeWS() {
     log.info("Closing WebSocket connection.");
-    this.shouldRetryConnection= false;
-    this.activeStreams.clear();
+    this.shouldRetryConnection= false;    
     this.close();
   }
   
@@ -268,8 +278,8 @@ public class SquawkWSClient extends WebSocketClient {
         "a=rtpmap:98 opus/48000/2\n" + 
         "a=fmtp:98 stereo=0; sprop-stereo=0; useinbandfec=1";
     log.info("SDP Offer \n{}", rtpSdpOffer);
-    File sdpOfferFilePath = this.writeSdpOffertoFile(rtpSdpOffer, broadcaster.getUserId());
-    StreamingSession streamingSession = new StreamingSession(broadcaster, port, rtpSdpOffer, sdpOfferFilePath);
+    File sdpOfferFile = this.writeSdpOffertoFile(rtpSdpOffer, broadcaster.getUserId());
+    StreamingSession streamingSession = new StreamingSession(broadcaster, port, rtpSdpOffer, sdpOfferFile);
     activeStreams.put(broadcaster.getUserId(), streamingSession);
     return rtpSdpOffer;    
   } 
@@ -331,17 +341,30 @@ public class SquawkWSClient extends WebSocketClient {
         log.info("New broadcaster: {} joined. Incoming stream on port {}", streamingSession.getBroadcaster().getUsername(), streamingSession.getReceiverPort());
         
         // starting ffmpeg to save the stream
-        String outputFile = System.getProperty("user.home") + "/out_" + streamingSession.getBroadcaster().getUserId() + ".ogg";
+        String outputFile = System.getProperty("user.home") + "/out_" + streamingSession.getBroadcaster().getUsername() + "_" + System.currentTimeMillis() +".ogg";
         String ffmpegCmd = "ffmpeg -protocol_whitelist file,crypto,udp,rtp -acodec opus -i " 
                             + streamingSession.getSdpOfferFile().getPath() 
                             + " -acodec libopus " 
                             + outputFile;
         
+        log.info("Running command > {} ", ffmpegCmd);
         
         try {
           Process p = Runtime.getRuntime().exec(ffmpegCmd);
-          activeFfpmegProcesses.put(streamingSession.getBroadcaster().getUserId(), p);
-          log.info("Incoming stream being saved into file {}", outputFile);
+          activeFfpmegProcesses.put(streamingSession.getBroadcaster().getUserId(), p);          
+          log.info("Incoming stream being saved into file {}", outputFile);    
+          
+          new Thread(new Runnable() {
+            @Override
+            public void run() {
+              BufferedReader lineReader = new BufferedReader(new InputStreamReader(p.getInputStream()));
+              lineReader.lines().forEach(log::info);
+    
+              BufferedReader errorReader = new BufferedReader(new InputStreamReader(p.getErrorStream()));
+              errorReader.lines().forEach(log::error);
+              }
+          }).start();
+         
         } catch (IOException e) {
           log.error("Unable to record and save incoming RTP stream", e);
         }
