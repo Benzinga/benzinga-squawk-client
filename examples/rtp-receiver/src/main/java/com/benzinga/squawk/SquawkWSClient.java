@@ -166,7 +166,7 @@ public class SquawkWSClient extends WebSocketClient {
             log.info("Received media-override message. Session ended. Looks like signed in from another session using same API key/token.");
             this.closeWS();
             break;           
-          case MESSAGE_TYPE_PING:  
+          case MESSAGE_TYPE_PING + "Response":  
             log.info("Pong Received");
             break;         
         }     
