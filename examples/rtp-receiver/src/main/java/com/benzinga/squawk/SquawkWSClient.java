@@ -1,22 +1,26 @@
 package com.benzinga.squawk;
 
+import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.nio.file.Files;
-import java.nio.file.Paths;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.Stack;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import org.java_websocket.client.WebSocketClient;
-import org.java_websocket.drafts.Draft;
 import org.java_websocket.handshake.ServerHandshake;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.benzinga.squawk.models.ActiveBroadcastersResponse;
+import com.benzinga.squawk.models.Broadcaster;
+import com.benzinga.squawk.models.StreamingSession;
 import com.fasterxml.uuid.Generators;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -34,38 +38,72 @@ public class SquawkWSClient extends WebSocketClient {
    
   private static final Logger log = LoggerFactory.getLogger(SquawkWSClient.class);
   private final Gson gson = new GsonBuilder().create();
-  private static Config conf;  
+  private final Config conf;  
+  
+  private final StreamingSessionListener sessionListener;
   
   private static final String MESSAGE_TYPE_AUTH = "auth";
-  private static final String MESSAGE_TYPE_PING = "ping";
-  private static final String MESSAGE_TYPE_SDP_OFFER = "sdp-offer";
+  private static final String MESSAGE_TYPE_JOIN_ROOM = "joinRoom";
+  private static final String MESSAGE_TYPE_PING = "ping";  
+  private static final String MESSAGE_TYPE_RECEIVE_MEDIA = "receiveMedia";
   private static final String MESSAGE_TYPE_LOGOUT = "logout";
-  private static final String MESSAGE_TYPE_MEDIA_OVERRIDE = "media-override";
+  private static final String MESSAGE_TYPE_MEDIA_OVERRIDE = "mediaOverride";
+  private static final String MESSAGE_TYPE_NEW_PRESENTER_ARRIVED = "newPresenterArrived";  
+  private static final String MESSAGE_TYPE_PRESENTER_LEFT = "presenterLeft";
+  
   // The retry interval in seconds for reconnecting after WS connection closed unexpectedly.  
   private static final long CONNECTION_RETRY_INTERVAL = 20L;
   // For what period of time the client should keep retrying at CONNECTION_RETRY_INTERVAL
   private static final long RETRY_PERIOD = 60L * 15L;
     
   ScheduledExecutorService scheduledExecutorService;
+  
+  private final Stack<Integer> availablePorts = new Stack<Integer>();
+  
+  // Map of broadcasterId:associated StreamingSession
+  private Map<String, StreamingSession> activeStreams = new HashMap<String, StreamingSession>();
+
+  // Map of messageId:broadcasterId of sdp offer
+  private Map<String, String> pendingSdpAnswers = new HashMap<String, String>();
     
   private boolean shouldRetryConnection = true;
   
-  public SquawkWSClient(String serverURI) throws URISyntaxException {
+  public SquawkWSClient(String serverURI, Config conf, StreamingSessionListener sessionListener) throws URISyntaxException {
     super(new URI(serverURI));        
+    this.conf = conf;
+    this.initAvailablePortsStack(conf.getString("receiver.ports").split(",")); 
+    this.sessionListener = sessionListener;
     this.setConnectionLostTimeout(30);
   }
   
-  public SquawkWSClient( URI serverUri , Draft draft ) {
-      super( serverUri, draft );
-  }
-
-  public SquawkWSClient( URI serverURI ) {
+  public SquawkWSClient(URI serverURI, Config conf, StreamingSessionListener sessionListener) {
       super( serverURI );
+      this.conf = conf;
+      this.initAvailablePortsStack(conf.getString("receiver.ports").split(","));
+      this.sessionListener = sessionListener;
+      this.setConnectionLostTimeout(30);
   }
 
-  public SquawkWSClient( URI serverUri, Map<String, String> httpHeaders ) {
+  public SquawkWSClient(URI serverUri, Map<String, String> httpHeaders, Config conf, StreamingSessionListener sessionListener) {
       super(serverUri, httpHeaders);
+      this.conf = conf;
+      this.initAvailablePortsStack(conf.getString("receiver.ports").split(","));
+      this.sessionListener = sessionListener;
+      this.setConnectionLostTimeout(30);
   }
+  
+  private void initAvailablePortsStack(String[] strPorts) {    
+    for (int i = 0; i < strPorts.length; i++) {
+      try {
+        int p = Integer.parseInt(strPorts[i]);
+        this.availablePorts.push(p);
+      } catch (NumberFormatException e) {
+        log.error("Error parsing available ports from config", e);
+        log.info("RECEIVER_PORTS should be comma-separated integer values with no space in between");
+        System.exit(0);
+      }
+    }
+  }  
 
   @Override
   public void onOpen( ServerHandshake handshakedata ) {
@@ -83,25 +121,49 @@ public class SquawkWSClient extends WebSocketClient {
       log.info("Message Received {}", message);
       JsonObject msg = gson.fromJson(message, JsonObject.class);
         switch (msg.get("type").getAsString()) {
-          case MESSAGE_TYPE_AUTH:
+          case MESSAGE_TYPE_AUTH + "Response":
             if (msg.has("error")) {
               log.error("Authentication failed {}", msg.get("error").getAsString());
               this.closeWS();
             } else {
-              this.sendSdpOffer(sdpOffer());
-              log.error("Authentication successful. Sending SDP Offer");
+              log.info("Authentication successful. Joining Room.");
+              this.sendJoinRoomMessage();              
             }
             break;
-          case MESSAGE_TYPE_SDP_OFFER:
+          case MESSAGE_TYPE_JOIN_ROOM + "Response":
+            if (msg.has("error")) {
+              log.error("Joining Room failed {}", msg.get("error").getAsString());
+              this.closeWS();
+            } else {
+              log.info("Joined Room successful. Should connect if any active broadcaster found.");
+              ActiveBroadcastersResponse activeBcasterResp = gson.fromJson(msg, ActiveBroadcastersResponse.class);
+              activeBcasterResp.getExistingBroadcasters().forEach((broadcaster) -> {
+                this.sendSdpOffer(generateSdpOffer(broadcaster), broadcaster);
+              });              
+            }
+            break;  
+          case MESSAGE_TYPE_RECEIVE_MEDIA + "Response":
             if (msg.has("error")) {
               log.error("Failed to negotiate SDP. Error: {}", msg.get("error").getAsString());
               this.closeWS();
             } else {
+              String userId = this.pendingSdpAnswers.remove(msg.get("id").getAsString());
+              this.activeStreams.get(userId).setSdpAnswer(msg.get("sdpAnswer").getAsString());
+              sessionListener.onBroadcasterJoined(this.activeStreams.get(userId));
               log.info("SDP negitiation successfull");
             }
             break;
+          case MESSAGE_TYPE_NEW_PRESENTER_ARRIVED:
+            Broadcaster broadcaster = gson.fromJson(msg.get("user").getAsJsonObject(), Broadcaster.class);
+            this.sendSdpOffer(generateSdpOffer(broadcaster), broadcaster);
+            break;
+          case MESSAGE_TYPE_PRESENTER_LEFT:
+            String userId = msg.get("userId").getAsString();
+            StreamingSession endedSession = this.activeStreams.remove(userId);
+            this.endSession(endedSession);
+            break;
           case MESSAGE_TYPE_MEDIA_OVERRIDE:  
-            log.info("Received media-override message. Session ended. Looks like signed in from another session using same API key.");
+            log.info("Received media-override message. Session ended. Looks like signed in from another session using same API key/token.");
             this.closeWS();
             break;           
           case MESSAGE_TYPE_PING:  
@@ -109,10 +171,21 @@ public class SquawkWSClient extends WebSocketClient {
             break;         
         }     
   }
+  
+  private void endSession(StreamingSession streamingSession) {
+    sessionListener.onBroadcasterLeft(streamingSession);
+    streamingSession.getSdpOfferFile().delete();
+    availablePorts.push(streamingSession.getReceiverPort());
+  }
 
   @Override
   public void onClose( int code, String reason, boolean remote ) {
-      log.info( "Connection closed by " + ( remote ? "remote peer" : "us" ) + " Code: " + code + " Reason: " + reason );
+      log.info("Connection closed by " + ( remote ? "remote peer" : "us" ) + " Code: " + code + " Reason: " + reason );
+      log.info("Cleaning up: Closing active streaming sesions..."); 
+      this.activeStreams.forEach((broadcasterId, streamingSession) -> {
+        this.endSession(streamingSession);
+      });
+      this.activeStreams.clear();      
       if (this.shouldRetryConnection) {    
         scheduledExecutorService = Executors.newScheduledThreadPool(1);        
         scheduledExecutorService.scheduleAtFixedRate(
@@ -150,7 +223,7 @@ public class SquawkWSClient extends WebSocketClient {
 
   private void closeWS() {
     log.info("Closing WebSocket connection.");
-    this.shouldRetryConnection= false;
+    this.shouldRetryConnection= false;    
     this.close();
   }
   
@@ -160,17 +233,29 @@ public class SquawkWSClient extends WebSocketClient {
     authObj.addProperty("id", Generators.timeBasedGenerator().generate().toString());
     authObj.addProperty("role", conf.getString("bz.squawk.role"));
     authObj.addProperty("type", MESSAGE_TYPE_AUTH);
-    authObj.addProperty("apikey", conf.getString("bz.squawk.apiKey"));
-    authObj.addProperty("room", conf.getString("bz.squawk.room"));
+    authObj.addProperty("apikey", conf.getString("bz.squawk.apiKey"));    
     this.send(authObj.toString());    
   }
   
-  private void sendSdpOffer(String sdpOffer) {
+  private void sendJoinRoomMessage() {
+    String room = conf.getString("bz.squawk.room");
+    log.info("Joining Room: {}" , room);
+    JsonObject authObj = new JsonObject();
+    authObj.addProperty("id", Generators.timeBasedGenerator().generate().toString());
+    authObj.addProperty("type", MESSAGE_TYPE_JOIN_ROOM);
+    authObj.addProperty("room", conf.getString("bz.squawk.room"));
+    this.send(authObj.toString());
+  }
+  
+  private void sendSdpOffer(String sdpOffer, Broadcaster broadcaster) {
     log.info("Sending SDP Offer");
     JsonObject receiveMediaMessage = new JsonObject();
-    receiveMediaMessage.addProperty("id", Generators.timeBasedGenerator().generate().toString());
-    receiveMediaMessage.addProperty("type", MESSAGE_TYPE_SDP_OFFER);
+    String messageId = Generators.timeBasedGenerator().generate().toString();
+    receiveMediaMessage.addProperty("id", messageId);
+    receiveMediaMessage.addProperty("type", MESSAGE_TYPE_RECEIVE_MEDIA);
     receiveMediaMessage.addProperty("sdpOffer", sdpOffer);
+    receiveMediaMessage.addProperty("userId", broadcaster.getUserId());
+    this.pendingSdpAnswers.put(messageId, broadcaster.getUserId());
     this.send(receiveMediaMessage.toString());
   }
   
@@ -182,28 +267,34 @@ public class SquawkWSClient extends WebSocketClient {
     this.send(logoutMessage.toString());
   }  
   
-  private String sdpOffer() {
-    if (conf.hasPath("receiver.sdpoffer.file") && !"<sdp_offer_file_path>".equals(conf.getString("receiver.sdpoffer.file"))) {
-      return this.getSDPOffer(conf.getString("receiver.sdpoffer.file"));
-    } else {
-      log.info("Generating a sample SDP Offer using IP {} and Port {}", conf.getString("receiver.ip"), conf.getString("receiver.port"));
-      log.info("If you want to use your SDP offer, then please set env RECEIVER_SDP_OFFER_FILE");
-      String rtpSdpOffer = "v=0\n" + 
-          "t=0 0\n" + 
-          "m=audio " + conf.getString("receiver.port") + " RTP/AVP 98\n" + 
-          "c=IN IP4 " + conf.getString("receiver.ip") + "\n" + 
-          "a=recvonly\n" + 
-          "a=rtpmap:98 opus/48000/2\n" + 
-          "a=fmtp:98 stereo=0; sprop-stereo=0; useinbandfec=1";
-      log.info("SDP Offer \n{}", rtpSdpOffer);
-      this.writeSdpOffertoFile(rtpSdpOffer);
-      return rtpSdpOffer;
-    }
+  private String generateSdpOffer(Broadcaster broadcaster) {    
+    int port = availablePorts.pop();
+    log.info("Generating an SDP Offer using IP {} and Port {} for connecting to broadcaster {}", conf.getString("receiver.ip"), port, broadcaster.getUsername());
+    String rtpSdpOffer = "v=0\n" + 
+        "t=0 0\n" + 
+        "m=audio " + port + " RTP/AVP 98\n" + 
+        "c=IN IP4 " + conf.getString("receiver.ip") + "\n" + 
+        "a=recvonly\n" + 
+        "a=rtpmap:98 opus/48000/2\n" + 
+        "a=fmtp:98 stereo=0; sprop-stereo=0; useinbandfec=1";
+    log.info("SDP Offer \n{}", rtpSdpOffer);
+    File sdpOfferFile = this.writeSdpOffertoFile(rtpSdpOffer, broadcaster.getUserId());
+    StreamingSession streamingSession = new StreamingSession(broadcaster, port, rtpSdpOffer, sdpOfferFile);
+    activeStreams.put(broadcaster.getUserId(), streamingSession);
+    return rtpSdpOffer;    
   } 
   
-  private void writeSdpOffertoFile(String rtpSdpOffer) {
+
+  /**
+   * 
+   * Write the SDP offer to a file with appending broadcaster id to file name
+   * @param rtpSdpOffer
+   * @param broadcasterId
+   * @return File path
+   */
+  private File writeSdpOffertoFile(String rtpSdpOffer, String broadcasterId) {
     String path = System.getProperty("user.home") + File.separator + "Documents";
-    path += File.separator + "bz-squawk-sdpoffer";
+    path += File.separator + "bz-squawk-sdpoffers";
     File customDir = new File(path);
 
     if (!customDir.exists()) {
@@ -211,7 +302,7 @@ public class SquawkWSClient extends WebSocketClient {
       customDir.mkdirs();    
     } 
         
-    File sdpOfferfile = new File(customDir.getPath() + File.separator + "inputAudio.sdp");
+    File sdpOfferfile = new File(customDir.getPath() + File.separator + "input_audio_" + broadcasterId + ".sdp");
     BufferedWriter writer;
     try {
       writer = new BufferedWriter(new FileWriter(sdpOfferfile));
@@ -221,27 +312,65 @@ public class SquawkWSClient extends WebSocketClient {
       log.info("You can open this file in VLC to play live squawk audio stream");
     } catch (IOException e) {
       log.error("Error occured while writting the SDP offer to file" , e);
-    }    
+    }
+    return sdpOfferfile;
   }
-  
-  private String getSDPOffer(String filePath) {
-    String rtpSdpOffer = "";
-    try
-    {
-      rtpSdpOffer = new String ( Files.readAllBytes( Paths.get(filePath) ) );
-      log.info("SDP Offer from file \n{}", rtpSdpOffer);
-    } 
-    catch (IOException e) 
-    {
-      log.error("Error occured while reading the SDP offer from file" , e);
-    }    
-    return rtpSdpOffer;
-  }
-    
+      
   public static void main( String[] args ) throws URISyntaxException {
-    conf = ConfigFactory.load(); 
+    Map<String, Process> activeFfpmegProcesses = new HashMap<String, Process>();
+    Config conf = ConfigFactory.load(); 
     log.info("Squawk Address : {}", conf.getString("bz.squawk.addr")); 
-    SquawkWSClient c = new SquawkWSClient(conf.getString("bz.squawk.addr")); // more about drafts here: http://github.com/TooTallNate/Java-WebSocket/wiki/Drafts
+    SquawkWSClient c = new SquawkWSClient(conf.getString("bz.squawk.addr"), conf, new StreamingSessionListener(){
+    
+      @Override
+      public void onBroadcasterLeft(StreamingSession streamingSession) {
+        
+        // disconnect the stream
+        log.info("Broadcaster: {} left. Incoming stream on port {} cutoff.", streamingSession.getBroadcaster().getUsername(), streamingSession.getReceiverPort());
+        
+        // stopping ffmpeg to save the stream
+        Process p =activeFfpmegProcesses.remove(streamingSession.getBroadcaster().getUserId());
+        p.destroy();
+        
+      }
+    
+      @Override
+      public void onBroadcasterJoined(StreamingSession streamingSession) {
+        
+        // connect stream further        
+        log.info("New broadcaster: {} joined. Incoming stream on port {}", streamingSession.getBroadcaster().getUsername(), streamingSession.getReceiverPort());
+        
+        // starting ffmpeg to save the stream
+        String outputFile = System.getProperty("user.home") + "/out_" + streamingSession.getBroadcaster().getUsername() + "_" + System.currentTimeMillis() +".ogg";
+        String ffmpegCmd = "ffmpeg -protocol_whitelist file,crypto,udp,rtp -acodec opus -i " 
+                            + streamingSession.getSdpOfferFile().getPath() 
+                            + " -acodec libopus " 
+                            + outputFile;
+        
+        log.info("Running command > {} ", ffmpegCmd);
+        
+        try {
+          Process p = Runtime.getRuntime().exec(ffmpegCmd);
+          activeFfpmegProcesses.put(streamingSession.getBroadcaster().getUserId(), p);          
+          log.info("Incoming stream being saved into file {}", outputFile);    
+          
+          new Thread(new Runnable() {
+            @Override
+            public void run() {
+              BufferedReader lineReader = new BufferedReader(new InputStreamReader(p.getInputStream()));
+              lineReader.lines().forEach(log::info);
+    
+              BufferedReader errorReader = new BufferedReader(new InputStreamReader(p.getErrorStream()));
+              errorReader.lines().forEach(log::error);
+              }
+          }).start();
+         
+        } catch (IOException e) {
+          log.error("Unable to record and save incoming RTP stream", e);
+        }
+        
+      }
+    }); 
     c.connect();  
     Runtime.getRuntime().addShutdownHook(new Thread() 
     { 
@@ -250,7 +379,7 @@ public class SquawkWSClient extends WebSocketClient {
         if (c.isOpen()) {
           log.info("Shutting down WebSocket Client!"); 
           c.sendLogoutMessage();
-          c.close();
+          c.closeWS();
         }
       } 
     }); 
