@@ -37,10 +37,11 @@ public class SquawkWSClient extends WebSocketClient {
   private static Config conf;  
   
   private static final String MESSAGE_TYPE_AUTH = "auth";
-  private static final String MESSAGE_TYPE_PING = "ping";
-  private static final String MESSAGE_TYPE_SDP_OFFER = "sdp-offer";
+  private static final String MESSAGE_TYPE_JOIN_ROOM = "joinRoom";
+  private static final String MESSAGE_TYPE_PING = "ping";  
+  private static final String MESSAGE_TYPE_RECEIVE_MEDIA = "receiveMedia";
   private static final String MESSAGE_TYPE_LOGOUT = "logout";
-  private static final String MESSAGE_TYPE_MEDIA_OVERRIDE = "media-override";
+  private static final String MESSAGE_TYPE_MEDIA_OVERRIDE = "mediaOverride";
   // The retry interval in seconds for reconnecting after WS connection closed unexpectedly.  
   private static final long CONNECTION_RETRY_INTERVAL = 20L;
   // For what period of time the client should keep retrying at CONNECTION_RETRY_INTERVAL
@@ -56,15 +57,18 @@ public class SquawkWSClient extends WebSocketClient {
   }
   
   public SquawkWSClient( URI serverUri , Draft draft ) {
-      super( serverUri, draft );
+    super( serverUri, draft );
+    this.setConnectionLostTimeout(30);
   }
 
   public SquawkWSClient( URI serverURI ) {
-      super( serverURI );
+    super( serverURI );
+    this.setConnectionLostTimeout(30);
   }
 
   public SquawkWSClient( URI serverUri, Map<String, String> httpHeaders ) {
-      super(serverUri, httpHeaders);
+    super(serverUri, httpHeaders);
+    this.setConnectionLostTimeout(30);
   }
 
   @Override
@@ -83,16 +87,26 @@ public class SquawkWSClient extends WebSocketClient {
       log.info("Message Received {}", message);
       JsonObject msg = gson.fromJson(message, JsonObject.class);
         switch (msg.get("type").getAsString()) {
-          case MESSAGE_TYPE_AUTH:
+          case MESSAGE_TYPE_AUTH + "Response":
             if (msg.has("error")) {
               log.error("Authentication failed {}", msg.get("error").getAsString());
               this.closeWS();
             } else {
-              this.sendSdpOffer(sdpOffer());
-              log.error("Authentication successful. Sending SDP Offer");
+              log.info("Authentication successful. Joining Room.");
+              this.sendJoinRoomMessage();
             }
             break;
-          case MESSAGE_TYPE_SDP_OFFER:
+          case MESSAGE_TYPE_JOIN_ROOM + "Response":
+            if (msg.has("error")) {
+              log.error("Joining Room failed {}", msg.get("error").getAsString());
+              this.closeWS();
+            } else {
+              log.info("Joined Room successful.");
+              this.sendSdpOffer(sdpOffer());
+              log.error("Authentication successful. Sending SDP Offer");              
+            }
+            break;
+          case MESSAGE_TYPE_RECEIVE_MEDIA + "Response":
             if (msg.has("error")) {
               log.error("Failed to negotiate SDP. Error: {}", msg.get("error").getAsString());
               this.closeWS();
@@ -104,10 +118,10 @@ public class SquawkWSClient extends WebSocketClient {
             log.info("Received media-override message. Session ended. Looks like signed in from another session using same API key.");
             this.closeWS();
             break;           
-          case MESSAGE_TYPE_PING:  
+          case MESSAGE_TYPE_PING + "Response":  
             log.info("Pong Received");
             break;         
-        }     
+        }
   }
 
   @Override
@@ -160,16 +174,25 @@ public class SquawkWSClient extends WebSocketClient {
     authObj.addProperty("id", Generators.timeBasedGenerator().generate().toString());
     authObj.addProperty("role", conf.getString("bz.squawk.role"));
     authObj.addProperty("type", MESSAGE_TYPE_AUTH);
-    authObj.addProperty("apikey", conf.getString("bz.squawk.apiKey"));
-    authObj.addProperty("room", conf.getString("bz.squawk.room"));
+    authObj.addProperty("apikey", conf.getString("bz.squawk.apiKey"));    
     this.send(authObj.toString());    
+  }
+  
+  private void sendJoinRoomMessage() {
+    String room = conf.getString("bz.squawk.room");
+    log.info("Joining Room: {}" , room);
+    JsonObject authObj = new JsonObject();
+    authObj.addProperty("id", Generators.timeBasedGenerator().generate().toString());
+    authObj.addProperty("type", MESSAGE_TYPE_JOIN_ROOM);
+    authObj.addProperty("room", conf.getString("bz.squawk.room"));
+    this.send(authObj.toString());
   }
   
   private void sendSdpOffer(String sdpOffer) {
     log.info("Sending SDP Offer");
     JsonObject receiveMediaMessage = new JsonObject();
     receiveMediaMessage.addProperty("id", Generators.timeBasedGenerator().generate().toString());
-    receiveMediaMessage.addProperty("type", MESSAGE_TYPE_SDP_OFFER);
+    receiveMediaMessage.addProperty("type", MESSAGE_TYPE_RECEIVE_MEDIA);
     receiveMediaMessage.addProperty("sdpOffer", sdpOffer);
     this.send(receiveMediaMessage.toString());
   }
@@ -241,7 +264,7 @@ public class SquawkWSClient extends WebSocketClient {
   public static void main( String[] args ) throws URISyntaxException {
     conf = ConfigFactory.load(); 
     log.info("Squawk Address : {}", conf.getString("bz.squawk.addr")); 
-    SquawkWSClient c = new SquawkWSClient(conf.getString("bz.squawk.addr")); // more about drafts here: http://github.com/TooTallNate/Java-WebSocket/wiki/Drafts
+    SquawkWSClient c = new SquawkWSClient(conf.getString("bz.squawk.addr"));
     c.connect();  
     Runtime.getRuntime().addShutdownHook(new Thread() 
     { 
