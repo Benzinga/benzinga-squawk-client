@@ -1,0 +1,64 @@
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+#bz3-header-menu {
+  margin: 3px auto;
+  width: 1010px;
+}
+
+#bz-logo {
+  float: left;
+  height: 100%;
+  background: #fff;
+  z-index: 999;
+  width: 182px;
+}
+
+#content {
+  clear: both;  
+  padding-top: 30px;
+  width: 1010px;
+  margin: 0 auto;
+}
+
+#content > * {
+  float: left;
+  clear: both;
+}
+
+#squawk-box {
+  width: 400px;
+}
+
+#squawk-box > * {
+  float: left;
+  margin-right: 5px;
+}
+
+#squawk-box .rc-slider {
+  width: 70%;
+  margin-right: 9px;
+  margin-top: 9px;
+}
+
+.audio-control {
+  margin-right: 7px;
+  margin-bottom: 8px;
+  float: left;
+}
+
+.controls {
+  margin-left: 20px;
+  margin-bottom: 30px;
+}
