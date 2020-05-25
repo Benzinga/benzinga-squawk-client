@@ -1,17 +1,23 @@
-import SquawkSocket, { IceServers, Presenter } from './SquawkSocket';
+import SquawkSocket, { IceServers, Presenter } from '../sockets/SquawkSocket';
 import { Participant } from './Participant';
 import { onMediaStateChange } from './Peer';
 import { map } from 'ramda';
 
+interface BroadcastRoomOptions {
+  onMediaStateChange: onMediaStateChange;
+  socket: SquawkSocket;
+}
+
 export default class BroadcastRoom {
   participants = new Map<string, Participant>();
   socket: SquawkSocket;
-  
+  onMediaStateChange: onMediaStateChange;
   activeBroadcasters = new Set<string>();
   listening: boolean = false;
   iceServers: IceServers = [];
 
-  constructor(socket: SquawkSocket) {    
+  constructor({ socket, onMediaStateChange }: BroadcastRoomOptions) {
+    this.onMediaStateChange = onMediaStateChange;
     this.socket = socket;
   }
 
@@ -50,7 +56,8 @@ export default class BroadcastRoom {
       this.activeBroadcasters.add(userId);
     } else {
       this.activeBroadcasters.delete(userId);
-    }    
+    }
+    this.onMediaStateChange(this.activeBroadcasters.size > 0);
   }
 
   setIceServers(iceServers: IceServers) {

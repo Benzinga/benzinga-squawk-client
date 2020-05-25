@@ -40,7 +40,7 @@ export class Peer {
     }).then(
       sdpOffer => this.sendMediaOffer(sdpOffer),
       err => {
-        console.log('Failed to generate SDP offer', err);
+        bzLog('Failed to generate SDP offer', err);
         return Promise.reject(err);
       },
     );
@@ -58,8 +58,8 @@ export class Peer {
     return this.signalingChannel
       .sendSdpOffer(sdpOffer)
       .then(res => {
-        console.log('Started broadcasting', res);
-        console.log('Processing SDP answer', res.sdpAnswer);
+        bzLog('Started broadcasting', res);
+        bzLog('Processing SDP answer', res.sdpAnswer);
         this.webRtcPeer.on('icecandidate', this.onIceCandidate);
         this.webRtcPeer.peerConnection.addEventListener('track', this.onTrack);
         return res;
@@ -79,13 +79,13 @@ export class Peer {
   }
 
   onIceCandidate = (candidate: RTCIceCandidate) => {
-    console.log('Received ice candidate', candidate);
+    bzLog('Received ice candidate', candidate);
     this.signalingChannel.sendIceCandidate(candidate).then(
       res => {
-        console.log('broadcastIceCandidate response', res);
+        bzLog('broadcastIceCandidate response', res);
       },
       err => {
-        console.log('Failed to broadcast ice candidate', err);
+        bzLog('Failed to broadcast ice candidate', err);
       },
     );
   };

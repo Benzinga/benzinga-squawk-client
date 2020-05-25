@@ -1,4 +1,4 @@
-import { IceServers, ParticipantSocket } from './SquawkSocket';
+import { IceServers, ParticipantSocket } from '../sockets/SquawkSocket';
 import { createPeer, onMediaStateChange, Peer, SignalingChannel } from './Peer';
 
 export class Participant {
