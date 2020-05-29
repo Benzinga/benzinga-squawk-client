@@ -1,15 +1,18 @@
 import React, { Component} from 'react';
 import logo from './logo.svg';
+import { skip } from 'rxjs/operators';
 import {ReactComponent as Logo} from './assets/Benzinga-logo-navy.svg';
 import { equals, forEach } from 'ramda';
 import './App.css';
 import Slider from 'rc-slider';
 import 'rc-slider/assets/index.css';
-import SquawkSocket, { IncomingMessage, RequestType, RpcResponse, Notification, AuthResponse, JoinRoomResponse } from './squawk/SquawkSocket';
+import SquawkSocket, {RequestType, Notification, AuthResponseNotification, NotificationType, PresenterArrivedNotification, IceCandidateNotification, PresenterLeftNotification } from './sockets/SquawkSocket';
 import BroadcastRoom from './squawk/BroadcastRoom';
+import { isNull } from 'ramda-adjunct';
 
 // @ts-ignore import needed to better handle WebRtc spec changes for all browsers
 import adapter from 'webrtc-adapter';
+import { Subscription } from 'rxjs';
 
 enum ConnectionState {
   stopped,
@@ -52,12 +55,11 @@ const getStatusText = (connectionState: ConnectionState, error: string | null) =
   }
 };
 
-export type OnMessageReceived = (message: RpcResponse) => void;
-export type OnNotificationReceived = (message: Notification) => void;
-
 export class App extends Component<Props, State> {
   socket: SquawkSocket | null = null;
   broadcastRoom: BroadcastRoom | null = null;
+  subscriptions: [Subscription, Subscription] | null = null;
+  pingTimer: number | null = null;
 
   constructor(props: Props) {
     super(props);
@@ -75,56 +77,229 @@ export class App extends Component<Props, State> {
   };
 
   setVolume = () => {
-    console.log("set volume");
+    if (this.broadcastRoom) {
+      const { volumeLevel } = this.state;
+      this.broadcastRoom.setVolume(volumeLevel);
+    }
+  };
+
+  handleMediaOverride() {
+    if (this.broadcastRoom) {
+      console.log('Media override');
+      this.broadcastRoom.dispose();
+      alert("Squawk audio stopped! This account started playing from another session.")
+      this.disconnectWithError('This account started playing from another session');
+    }
+  }
+
+  joinRoom = () => {
+    console.log('Joining room');
+    return this.socket!.joinRoom('PRO').then(
+      res => {
+        const { volumeLevel } = this.state;
+        forEach(presenter => {
+          this.broadcastRoom!.addParticipant(presenter, volumeLevel, this.state.isMuted);
+        }, res.existingPresenters);
+      },
+      error => {
+        console.log('Not able to join room for the following reason:', error);
+        return Promise.reject(error);
+      },
+    );
   };
 
   connect = () => {
-    this.socket = SquawkSocket.connect(this.onMessageReceived, this.onNotificationReceived);
-    this.broadcastRoom = new BroadcastRoom(this.socket);
+    this.socket = SquawkSocket.connect();
+    if (this.broadcastRoom) {
+      this.broadcastRoom.dispose();
+    }
+    this.broadcastRoom = new BroadcastRoom({ socket: this.socket, onMediaStateChange: this.handleMediaStateChange });
+    this.subscriptions = [
+      this.socket.notifications$.subscribe(this.handleMessage.bind(this)),
+      // skip first `disconnected` event
+      this.socket.connectionStatus$!.pipe(skip(1)).subscribe(
+        this.handleConnectionChange.bind(this),
+        err => err,
+        () => {
+          this.disconnect();
+        },
+      ),
+    ];
     this.setVolume();
-    console.log("Connect called")
+  }
+  
+  handleConnectionChange = (status: number) => {
+    if (equals(status, 1)) {
+      console.log('Squawk connected');
+      if (this.broadcastRoom) {
+        this.broadcastRoom.dispose();
+      }
+      this.broadcastRoom = new BroadcastRoom({ socket: this.socket!, onMediaStateChange: this.handleMediaStateChange });
+      this.startPing();
+      this.startListening();
+    } else if (equals(status, 0)) {
+      console.log('Squawk disconnected');
+      this.setDisconnected();
+    }
+  };
+
+  setDisconnected() {
+    this.stopPing();
+    if (this.broadcastRoom) {
+      this.broadcastRoom.dispose();
+    }
+    this.setState(prevState => {
+      if (equals(prevState.connectionState, ConnectionState.stopped)) {
+        return null;
+      }
+      return {
+        connectionState: ConnectionState.disconnected,
+        connectionError: 'Unable to connect. Retrying...',
+      };
+    });
   }
 
-  onMessageReceived = (response: RpcResponse) => {
-    switch(response.type) {
+  stopPing() {
+    if (isNull(this.pingTimer)) {
+      return;
+    }
+
+    window.clearTimeout(this.pingTimer);
+    this.pingTimer = null;
+  }
+  
+  startPing = () => {
+    this.pingTimer = window.setTimeout(() => {
+      if (this.socket) {
+        this.socket
+          .ping()
+          .then(this.startPing)
+          .catch(error => {
+            console.log('Failed to ping', error);
+          });
+      }
+    }, pingInterval);
+  };
+
+  startConnect = () => {
+    this.setState({ connectionState: ConnectionState.connecting, connectionError: null }, this.connect);
+  };
+
+  disconnectWithError(error: string) {
+    this.setState({ connectionState: ConnectionState.stopped, connectionError: error }, this.disconnect);
+  }
+
+  startDisconnect = () => {
+    this.setState({ connectionState: ConnectionState.stopped }, this.disconnect);
+  };
+
+  startListening = () => {
+    if (!this.broadcastRoom) {
+      console.log('Failed to start listening no broadcastRoom available');
+      this.disconnectWithError('WebRTC failed');
+      return;
+    }
+    this.broadcastRoom.startListening().then(
+      () => {
+        this.setState({ connectionState: ConnectionState.joined });
+      },
+      error => {
+        console.log('Failed to start listening', error);
+        this.disconnectWithError('WebRTC failed');
+      },
+    );
+  };
+
+  handleMediaStateChange = (receivingMedia: boolean) => {
+    this.setState({
+      connectionState: receivingMedia ? ConnectionState.receivingMedia : ConnectionState.joined,
+    });
+  };
+
+  handleMessage = (message: Notification) => {
+    if (!this.broadcastRoom) {
+      console.log('No broadcast room available');
+      return;
+    }
+    console.log('Received message:', message);
+    switch (message.type) {
       case RequestType.auth + "Response":
-        const authResponse = response as AuthResponse;
         if (!this.broadcastRoom) {
           throw new Error('Broadcast room not available');
         }
-        this.broadcastRoom.setIceServers(authResponse.iceServers);
+        message = message as AuthResponseNotification;
+        this.broadcastRoom.setIceServers(message.iceServers); 
+        this.joinRoom();
         break;
-      case RequestType.joinRoom + "Response":   
-        const { volumeLevel } = this.state;
-        const joinRoomResponse = response as JoinRoomResponse;
-        forEach(presenter => {
-          this.broadcastRoom!.addParticipant(presenter, volumeLevel, this.state.isMuted);
-        }, joinRoomResponse.existingPresenters);     
-        break;      
-      case RequestType.receiveMedia + "Response":
+      case NotificationType.newPresenterArrived:
+        console.log('New presenter arrived', message);
+        const { volumeLevel, isMuted } = this.state;
+        message = message as PresenterArrivedNotification;
+        this.broadcastRoom.addParticipant(message.user, volumeLevel, isMuted);
         break;
-      case RequestType.ping + "Response":
+
+      case NotificationType.iceCandidate:
+        message = message as IceCandidateNotification;
+        this.broadcastRoom.addIceCandidate(message);
+        break;
+
+      case NotificationType.presenterLeft:
+        message = message as PresenterLeftNotification;
+        console.log('Presenter left', message.userId);
+        this.broadcastRoom.removeParticipant(message.userId);
+        break;
+
+      case NotificationType.mediaOverride:
+        this.handleMediaOverride();
+        break;
+
+      default:
+        console.log('Unrecognized message', message);
         break;
     }
-  }
-
-  onNotificationReceived = (notification: Notification) => {
-    switch(notification.type) {
-
-    }
-  }
+  };
 
   disconnect = () => {
     console.log("Disconnect called")
   }
 
+  renderStatusBar() {
+    let currentStatus = "Disconnected/Stopped";
+    switch (this.state.connectionState) {
+      case ConnectionState.connecting:
+        currentStatus = "Connecting...";
+        break;
+      case ConnectionState.joined:
+      case ConnectionState.connected:  
+        currentStatus = "Connected";
+        break;
+      case ConnectionState.receivingMedia:
+        currentStatus = "Receiving Squawk Audio";
+        break;
+      case ConnectionState.stopped:
+      case ConnectionState.disconnected:    
+        currentStatus = "Disconnected/Stopped";
+        break;
+    }
+    return (
+      <div>
+        <label>Status: </label>
+        {currentStatus}
+      </div>
+    )
+  }
+
+  componentWillUnmount() {
+    this.disconnect();
+  }
+  
   renderPlayToggle() {    
     switch (this.state.connectionState) {
       case ConnectionState.joined:
       case ConnectionState.connected:  
       case ConnectionState.receivingMedia:
         return (
-          <div onClick={this.disconnect}>
+          <div onClick={this.startDisconnect}>
             <svg className="bi bi-pause-fill" width="1em" height="1em" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
               <path d="M5.5 3.5A1.5 1.5 0 017 5v6a1.5 1.5 0 01-3 0V5a1.5 1.5 0 011.5-1.5zm5 0A1.5 1.5 0 0112 5v6a1.5 1.5 0 01-3 0V5a1.5 1.5 0 011.5-1.5z"/>
             </svg>
@@ -156,13 +331,7 @@ export class App extends Component<Props, State> {
           <p>
             <a href="https://www.benzinga.com/apis/cloud-product/benzinga-squawk/" target="blank">Benzinga Squawk</a> is built on top of WebRTC. This is a sample WebRTC client. To know more about APIs please visit <a href="https://docs.benzinga.io/benzinga/squawk-v3.html" target="blank">docs</a>.
           </p>
-          <div id="squawk-box">
-            {/* <div className="controls">
-              <a href="javascript:void(0)" className="audio-control">Play</a>
-              <a href="javascript:void(0)" className="audio-control">Stop</a>
-              <a href="javascript:void(0)" className="audio-control">Mute</a>
-            </div> */}
-            
+          <div id="squawk-box">                       
               {this.renderPlayToggle()} 
               <div onClick={this.setVolume}>
                 <svg className="bi bi-volume-mute-fill" width="2em" height="2em" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
@@ -187,10 +356,8 @@ export class App extends Component<Props, State> {
                   <path fill-rule="evenodd" d="M6.717 3.55A.5.5 0 017 4v8a.5.5 0 01-.812.39L3.825 10.5H1.5A.5.5 0 011 10V6a.5.5 0 01.5-.5h2.325l2.363-1.89a.5.5 0 01.529-.06z" clip-rule="evenodd"/>
                 </svg> 
               </div>
-            
-            
-            {/* <audio controls id="squawk-audio"/> */}
           </div>
+          {this.renderStatusBar()}
         </div>
         
       </div>

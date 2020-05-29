@@ -1,4 +1,4 @@
-import hark, { HarkEventEmitter } from 'hark';
+import hark, { Harker } from 'hark';
 import kurentoUtils, { WebRtcPeer } from 'kurento-utils';
 
 export interface SignalingChannel {
@@ -9,7 +9,7 @@ export interface SignalingChannel {
 export type onMediaStateChange = (receivingMedia: boolean) => void;
 
 export class Peer {
-  audioMonitor?: HarkEventEmitter;
+  audioMonitor?: Harker;
   onMediaStateChange: onMediaStateChange;
   signalingChannel: SignalingChannel;
   webRtcPeer: WebRtcPeer;
@@ -40,7 +40,7 @@ export class Peer {
     }).then(
       sdpOffer => this.sendMediaOffer(sdpOffer),
       err => {
-        bzLog('Failed to generate SDP offer', err);
+        console.log('Failed to generate SDP offer', err);
         return Promise.reject(err);
       },
     );
@@ -58,8 +58,8 @@ export class Peer {
     return this.signalingChannel
       .sendSdpOffer(sdpOffer)
       .then(res => {
-        bzLog('Started broadcasting', res);
-        bzLog('Processing SDP answer', res.sdpAnswer);
+        console.log('Started broadcasting', res);
+        console.log('Processing SDP answer', res.sdpAnswer);
         this.webRtcPeer.on('icecandidate', this.onIceCandidate);
         this.webRtcPeer.peerConnection.addEventListener('track', this.onTrack);
         return res;
@@ -79,13 +79,13 @@ export class Peer {
   }
 
   onIceCandidate = (candidate: RTCIceCandidate) => {
-    bzLog('Received ice candidate', candidate);
+    console.log('Received ice candidate', candidate);
     this.signalingChannel.sendIceCandidate(candidate).then(
       res => {
-        bzLog('broadcastIceCandidate response', res);
+        console.log('broadcastIceCandidate response', res);
       },
       err => {
-        bzLog('Failed to broadcast ice candidate', err);
+        console.log('Failed to broadcast ice candidate', err);
       },
     );
   };

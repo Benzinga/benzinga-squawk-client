@@ -1,5 +1,5 @@
 import fastStringify from 'fast-json-stable-stringify';
-import ServerSocket, { BaseConnectionState } from './ServerSocket';
+import ServerSocket, { BaseConnectionState, WebSocketPayload } from './ServerSocket';
 
 import { equals, filter as ramdaFilter, includes } from 'ramda';
 import { Observable, Subscription } from 'rxjs';
@@ -23,6 +23,7 @@ export enum NotificationType {
   mediaOverride = 'mediaOverride',
   newPresenterArrived = 'newPresenterArrived',
   presenterLeft = 'presenterLeft',
+  authResponse = "authResponse"
 }
 
 export interface Presenter {
@@ -54,7 +55,8 @@ export type Notification =
   | IceCandidateNotification
   | MediaOverrideNotification
   | PresenterArrivedNotification  
-  | PresenterLeftNotification;
+  | PresenterLeftNotification
+  | AuthResponseNotification;
 
 export interface RpcRequest {
   type: RequestType;
@@ -68,7 +70,8 @@ interface RpcResponse {
 
 export type IceServers = RTCIceServer[];
 
-export interface AuthResponse {
+export interface AuthResponseNotification {
+  type: NotificationType.authResponse;
   iceServers: IceServers;
 }
 
@@ -83,7 +86,7 @@ export interface ParticipantSocket {
 
 type IncomingMessage = RpcResponse | Notification;
 
-const parseResponse = (response: string): IncomingMessage => JSON.parse(response);
+const parseResponse = (response: WebSocketPayload): IncomingMessage => JSON.parse(response as string);
 
 interface PendingRequest {
   resolve(res: RpcResponse): void;
@@ -106,7 +109,8 @@ export default class SquawkSocket extends ServerSocket implements ParticipantSoc
 
   static connect() {
     const socket = new SquawkSocket();
-    socket.connect(window.env.SQUAWK_ADDR);
+    socket.connect(window.env.SQUAWK_ADDR + "?jwt=" + window.env.JWT_TOKEN);
+    //socket.connect("ws://localhost:8080/webrtc?jwt=eyJ0eXAiOiJKV1QiLCJraWQiOiJieiIsImFsZyI6IlJTMjU2In0.eyJraWQiOiJieiIsImlzcyI6InRyYWRldG9vbC5jb20iLCJzdWIiOiJkZDFhMjcyMC0xOTQyLTM3ZTktOWE4Ni1lNjgwMmM2NWI5Y2UiLCJpYXQiOjE1ODgwOTg3NjQsIm5iZiI6MTU4ODA5ODY0NCwiZXhwIjoxNTg4MDk4ODg0fQ.JDQwb18w84vqVGA0GySgi65yERSUn8S4jL9x4Tw7MFw3Qeb9lSSu8r4LuDU9CFmmoAk_RkTf6b058ho3IjirB4d3OXVxQOHD0wc1UOxY0Z6d3dO4i_DQ2pi70zxfC3oEvIIsuSrFUndLuiDZruKH1NcPUsJF47FW_nMpPO2c9GVnusXo5eKcvGvNzb4cxjS66_bOIK_bsPw6XvZUDw_DmgooXTXYwWLiAmSs28SFALsG78oIHli6kc9jk-AVyP5ZCXBf_s1gvqrBCrM0JKiGwv5WjrbDoDG4amgssW3I-lZfGHh4_unvDf87MO7cfLX6EvUpYM8VTVvBNyUaQK1A_Q");
     return socket;
   }
 
@@ -163,15 +167,6 @@ export default class SquawkSocket extends ServerSocket implements ParticipantSoc
       pendingRequest.resolve(response);
     }
   };
-
-  authenticate(key: string, email: string, role: string): Promise<AuthResponse> {
-    return this.request({
-      key,
-      name: email,
-      role,
-      type: RequestType.auth,
-    });
-  }
 
   joinRoom(room: string): Promise<{ existingPresenters: Presenter[] }> {
     return this.request({

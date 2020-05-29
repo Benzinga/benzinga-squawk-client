@@ -8,7 +8,8 @@ const NORMAL_CLOSE_ERROR = 'Normal closure';
 export enum SpecialMessages {
   forceReconnect = 'forceReconnect',
 }
-type WebSocketPayload = string | ArrayBuffer | Blob;
+
+export type  WebSocketPayload = string | ArrayBuffer | Blob;
 
 export type GetWebSocketResponses<T = WebSocketPayload> = (input$: Observable<WebSocketPayload>) => Observable<T>;
 
@@ -21,7 +22,7 @@ export enum BaseConnectionState {
 export default class ServerSocket {
   private inputStream$: QueueingSubject<string> = new QueueingSubject<string>();
   private errors$: Subject<Event> = new Subject<Event>();
-  messages$: Observable<string> | null = null;
+  messages$: Observable<WebSocketPayload> | null = null;
   connectionStatus$: BehaviorSubject<number> = new BehaviorSubject(0);
 
   protected connect(url: string) {
@@ -37,12 +38,10 @@ export default class ServerSocket {
       return;
     }
 
-    const socket$ = websocketConnect(url, {
-      protocols: [],
-    });
+    const socket$ = websocketConnect(url);
 
     const messages$ = socket$.pipe(
-      switchMap((getResponses: GetWebSocketResponses<string>) => {
+      switchMap((getResponses: GetWebSocketResponses<WebSocketPayload>) => {
         this.connectionStatus$.next(BaseConnectionState.connected);
         return getResponses(this.inputStream$);
       }),
@@ -67,7 +66,7 @@ export default class ServerSocket {
     );
     this.errors$.subscribe(_ => this.connectionStatus$.next(BaseConnectionState.disconnected));
 
-    this.messages$ = retriedMessages$.pipe(share());
+    this.messages$ = retriedMessages$.pipe(share<WebSocketPayload>());
 
     this.messages$!.subscribe(
       _ => {
