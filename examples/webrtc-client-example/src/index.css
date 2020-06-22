@@ -23,6 +23,7 @@ code {
   background: #fff;
   z-index: 999;
   width: 182px;
+  margin-top: 10px;
 }
 
 #content {
@@ -38,7 +39,7 @@ code {
 }
 
 #squawk-box {
-  width: 400px;
+  width: 520px;
 }
 
 #squawk-box > * {
@@ -47,7 +48,7 @@ code {
 }
 
 #squawk-box .rc-slider {
-  width: 70%;
+  width: 55%;
   margin-right: 9px;
   margin-top: 9px;
 }
@@ -61,4 +62,36 @@ code {
 .controls {
   margin-left: 20px;
   margin-bottom: 30px;
+}
+
+.pointer {
+  cursor: pointer;
+}
+
+.share-button {
+  width: 45px;
+  height: 30px;
+  background: #dfe6e9;
+  border-radius: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 30px;
+  overflow: hidden;
+  position: relative;
+  cursor: pointer;
+  transition: .3s linear;
+}
+
+.share-button span{
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  background: #2d3436;
+  color: #f1f1f1;
+  text-align: center;
+  line-height: 30px;
+  z-index: 999;
+  transition: .6s linear;
+  border-radius: 40px; 
 }

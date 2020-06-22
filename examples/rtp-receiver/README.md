@@ -1,7 +1,7 @@
 # Simple WebScoket client to receive Squawk RTP stream
 
 ## Overview
-Squawk WebSocket client implementation for connecting to squawk and receiving RTP stream. This includes connecting to squawk WebSocket server and exchanging messages, mainly authentication and SDP negotiation, for receiving RTP stream on a specific IP:Port. You can review predefined message types and formats at https://docs.benzinga.io/benzinga/squawk-v2.html#using-rtp
+Squawk WebSocket client implementation for connecting to squawk and receiving RTP stream. This includes connecting to squawk WebSocket server and exchanging messages, mainly authentication and SDP negotiation, for receiving RTP stream on a specific IP:Port. You can review predefined message types and formats at https://docs.benzinga.io/benzinga/squawk-v3.html#using-rtp
 
 ## Prerequisites
 1. [Java](https://www.oracle.com/technetwork/java/javase/downloads/index.html) >=1.8

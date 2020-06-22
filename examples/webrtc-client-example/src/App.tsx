@@ -1,6 +1,4 @@
 import React, { Component} from 'react';
-import logo from './logo.svg';
-import { skip } from 'rxjs/operators';
 import {ReactComponent as Logo} from './assets/Benzinga-logo-navy.svg';
 import { equals, forEach } from 'ramda';
 import './App.css';
@@ -32,28 +30,7 @@ interface State {
   readonly volumeLevel: number;
 }
 
-const pingInterval = 25 * 1000;
-
-const getStatusText = (connectionState: ConnectionState, error: string | null) => {
-  if (error) {
-    return error;
-  }
-  switch (connectionState) {
-    case ConnectionState.stopped:
-    default:
-      return 'Stopped';
-
-    case ConnectionState.connecting:
-      return 'Connecting...';
-
-    case ConnectionState.connected:
-    case ConnectionState.joined:
-      return 'Connected. Waiting for audio...';
-
-    case ConnectionState.receivingMedia:
-      return 'Connected. Receiving audio...';
-  }
-};
+const pingInterval = 1000 * 25;
 
 export class App extends Component<Props, State> {
   socket: SquawkSocket | null = null;
@@ -73,7 +50,6 @@ export class App extends Component<Props, State> {
 
   onVolumeChange = (value: number) => {
     this.setState({ volumeLevel: value }, this.setVolume);
-    console.log("volume : " + value);
   };
 
   setVolume = () => {
@@ -81,6 +57,22 @@ export class App extends Component<Props, State> {
       const { volumeLevel } = this.state;
       this.broadcastRoom.setVolume(volumeLevel);
     }
+  };
+
+  toggleRoomMute = () => {
+    if (this.broadcastRoom) {
+      const { isMuted } = this.state;
+      this.broadcastRoom.toggleMute(isMuted);
+    }
+  };
+  
+  toggleMute = () => {
+    this.setState((prevState: State) => {
+      if (!prevState) {
+        return { isMuted: false };
+      }
+      return { isMuted: !prevState.isMuted };
+    }, this.toggleRoomMute);
   };
 
   handleMediaOverride() {
@@ -117,7 +109,7 @@ export class App extends Component<Props, State> {
     this.subscriptions = [
       this.socket.notifications$.subscribe(this.handleMessage.bind(this)),
       // skip first `disconnected` event
-      this.socket.connectionStatus$!.pipe(skip(1)).subscribe(
+      this.socket.squawkConnectionStatus$!.subscribe(
         this.handleConnectionChange.bind(this),
         err => err,
         () => {
@@ -195,7 +187,7 @@ export class App extends Component<Props, State> {
 
   startListening = () => {
     if (!this.broadcastRoom) {
-      console.log('Failed to start listening no broadcastRoom available');
+      console.log('Failed to start listening, no broadcastRoom available');
       this.disconnectWithError('WebRTC failed');
       return;
     }
@@ -216,12 +208,14 @@ export class App extends Component<Props, State> {
     });
   };
 
-  handleMessage = (message: Notification) => {
+  handleMessage = (message: Notification) => {    
+    if (isNull(message)) {
+      return;
+    }
     if (!this.broadcastRoom) {
       console.log('No broadcast room available');
       return;
-    }
-    console.log('Received message:', message);
+    }    
     switch (message.type) {
       case RequestType.auth + "Response":
         if (!this.broadcastRoom) {
@@ -260,7 +254,36 @@ export class App extends Component<Props, State> {
   };
 
   disconnect = () => {
-    console.log("Disconnect called")
+    if (this.socket) {
+      this.socket.logout().then(
+        response => {
+          console.log('Stopped listening', response);
+        },
+        error => {
+          console.log('Failed to stop listening', error);
+        },
+      );
+      this.socket.disconnect();
+    }
+    if (this.broadcastRoom) {
+      this.broadcastRoom.dispose();
+    }
+    this.close();
+  }
+
+  close() {
+    if (this.subscriptions) {
+      forEach(subscription => {
+        subscription.unsubscribe();
+      }, this.subscriptions);
+    }
+    this.stopPing();
+    if (this.socket) {
+      this.socket.close();
+    }
+    this.setState({
+      connectionState: ConnectionState.stopped,
+    });
   }
 
   renderStatusBar() {
@@ -299,8 +322,8 @@ export class App extends Component<Props, State> {
       case ConnectionState.connected:  
       case ConnectionState.receivingMedia:
         return (
-          <div onClick={this.startDisconnect}>
-            <svg className="bi bi-pause-fill" width="1em" height="1em" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+          <div className="pointer" onClick={this.startDisconnect}>
+            <svg className="bi bi-pause-fill" width="2em" height="2em" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
               <path d="M5.5 3.5A1.5 1.5 0 017 5v6a1.5 1.5 0 01-3 0V5a1.5 1.5 0 011.5-1.5zm5 0A1.5 1.5 0 0112 5v6a1.5 1.5 0 01-3 0V5a1.5 1.5 0 011.5-1.5z"/>
             </svg>
           </div>
@@ -308,7 +331,7 @@ export class App extends Component<Props, State> {
 
       case ConnectionState.stopped:
         return (
-          <div onClick={this.connect}>
+          <div className="pointer" onClick={this.connect}>
             <svg className="bi bi-play-fill" width="2em" height="2em" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
               <path d="M11.596 8.697l-6.363 3.692c-.54.313-1.233-.066-1.233-.697V4.308c0-.63.692-1.01 1.233-.696l6.363 3.692a.802.802 0 010 1.393z"/>
             </svg>
@@ -335,8 +358,8 @@ export class App extends Component<Props, State> {
               {this.renderPlayToggle()} 
               <div onClick={this.setVolume}>
                 <svg className="bi bi-volume-mute-fill" width="2em" height="2em" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-                  <path fill-rule="evenodd" d="M6.717 3.55A.5.5 0 017 4v8a.5.5 0 01-.812.39L3.825 10.5H1.5A.5.5 0 011 10V6a.5.5 0 01.5-.5h2.325l2.363-1.89a.5.5 0 01.529-.06zm7.137 1.596a.5.5 0 010 .708l-4 4a.5.5 0 01-.708-.708l4-4a.5.5 0 01.708 0z" clip-rule="evenodd"/>
-                  <path fill-rule="evenodd" d="M9.146 5.146a.5.5 0 000 .708l4 4a.5.5 0 00.708-.708l-4-4a.5.5 0 00-.708 0z" clip-rule="evenodd"/>
+                  <path fillRule="evenodd" d="M6.717 3.55A.5.5 0 017 4v8a.5.5 0 01-.812.39L3.825 10.5H1.5A.5.5 0 011 10V6a.5.5 0 01.5-.5h2.325l2.363-1.89a.5.5 0 01.529-.06zm7.137 1.596a.5.5 0 010 .708l-4 4a.5.5 0 01-.708-.708l4-4a.5.5 0 01.708 0z" clipRule="evenodd"/>
+                  <path fillRule="evenodd" d="M9.146 5.146a.5.5 0 000 .708l4 4a.5.5 0 00.708-.708l-4-4a.5.5 0 00-.708 0z" clipRule="evenodd"/>
                 </svg>
               </div>
               <Slider
@@ -353,8 +376,11 @@ export class App extends Component<Props, State> {
                   <path d="M11.536 14.01A8.473 8.473 0 0014.026 8a8.473 8.473 0 00-2.49-6.01l-.708.707A7.476 7.476 0 0113.025 8c0 2.071-.84 3.946-2.197 5.303l.708.707z"/>
                   <path d="M10.121 12.596A6.48 6.48 0 0012.025 8a6.48 6.48 0 00-1.904-4.596l-.707.707A5.483 5.483 0 0111.025 8a5.483 5.483 0 01-1.61 3.89l.706.706z"/>
                   <path d="M8.707 11.182A4.486 4.486 0 0010.025 8a4.486 4.486 0 00-1.318-3.182L8 5.525A3.489 3.489 0 019.025 8 3.49 3.49 0 018 10.475l.707.707z"/>
-                  <path fill-rule="evenodd" d="M6.717 3.55A.5.5 0 017 4v8a.5.5 0 01-.812.39L3.825 10.5H1.5A.5.5 0 011 10V6a.5.5 0 01.5-.5h2.325l2.363-1.89a.5.5 0 01.529-.06z" clip-rule="evenodd"/>
+                  <path fillRule="evenodd" d="M6.717 3.55A.5.5 0 017 4v8a.5.5 0 01-.812.39L3.825 10.5H1.5A.5.5 0 011 10V6a.5.5 0 01.5-.5h2.325l2.363-1.89a.5.5 0 01.529-.06z" clipRule="evenodd"/>
                 </svg> 
+              </div>
+              <div className="share-button" onClick={this.toggleMute}>
+                <span>{isMuted ? 'UNMUTE' : 'MUTE'}</span>
               </div>
           </div>
           {this.renderStatusBar()}

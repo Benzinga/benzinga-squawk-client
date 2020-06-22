@@ -1,17 +1,11 @@
 import { QueueingSubject } from 'queueing-subject';
 import { equals } from 'ramda';
-import { BehaviorSubject, Observable, Subject } from 'rxjs';
-import websocketConnect from 'rxjs-websockets';
-import { delay, filter, map, retryWhen, share, switchMap } from 'rxjs/operators';
-
-const NORMAL_CLOSE_ERROR = 'Normal closure';
-export enum SpecialMessages {
-  forceReconnect = 'forceReconnect',
-}
-
-export type  WebSocketPayload = string | ArrayBuffer | Blob;
-
-export type GetWebSocketResponses<T = WebSocketPayload> = (input$: Observable<WebSocketPayload>) => Observable<T>;
+import { BehaviorSubject, Observable, Subject, Subscription } from 'rxjs';
+import makeWebSocketObservable, {
+  GetWebSocketResponses,
+  normalClosureMessage,
+} from 'rxjs-websockets';
+import { delay, filter, retryWhen, share, switchMap } from 'rxjs/operators';
 
 export enum BaseConnectionState {
   disconnected,
@@ -22,71 +16,59 @@ export enum BaseConnectionState {
 export default class ServerSocket {
   private inputStream$: QueueingSubject<string> = new QueueingSubject<string>();
   private errors$: Subject<Event> = new Subject<Event>();
-  messages$: Observable<WebSocketPayload> | null = null;
-  connectionStatus$: BehaviorSubject<number> = new BehaviorSubject(0);
+  messages$: Observable<string> | null = null;;
+  messagesSubscription: Subscription | null = null;
+  connectionStatus$: BehaviorSubject<number> = new BehaviorSubject(BaseConnectionState.default);
+    
+  connect(url: string) {
 
-  protected connect(url: string) {
     if (this.messages$) {
       return;
     }
+    
+    this.connectionStatus$ = new BehaviorSubject(BaseConnectionState.default);
+    this.inputStream$ = new QueueingSubject<string>();
 
-    if (process.env.MOCK_SOCKETS) {
-      this.messages$ = this.inputStream$.asObservable().pipe(share());
-      this.connectionStatus$.next(BaseConnectionState.disconnected);
-      this.connectionStatus$.next(BaseConnectionState.connected);
+    const socket$ = makeWebSocketObservable(url);
 
-      return;
-    }
-
-    const socket$ = websocketConnect(url);
-
-    const messages$ = socket$.pipe(
-      switchMap((getResponses: GetWebSocketResponses<WebSocketPayload>) => {
+    this.messages$ = socket$.pipe(
+      switchMap((getResponses: GetWebSocketResponses<string>) => {
         this.connectionStatus$.next(BaseConnectionState.connected);
         return getResponses(this.inputStream$);
       }),
-      map(val => {
-        if (equals(val, SpecialMessages.forceReconnect)) {
-          throw val;
-        }
-        return val;
+      retryWhen(errors => {
+        errors.subscribe(this.errors$);        
+        this.connectionStatus$.next(BaseConnectionState.disconnected);
+        return errors.pipe(
+                filter(err => !equals(err.message, normalClosureMessage)),
+                delay(1000));
       }),
       share(),
     );
 
-    const retriedMessages$ = messages$.pipe(
-      retryWhen(errors$ => {
-        errors$.subscribe(this.errors$);
-        this.connectionStatus$.next(BaseConnectionState.disconnected);
-        return errors$.pipe(
-          filter(err => !equals(err.message, NORMAL_CLOSE_ERROR)),
-          delay(1000),
-        );
-      }),
-    );
     this.errors$.subscribe(_ => this.connectionStatus$.next(BaseConnectionState.disconnected));
 
-    this.messages$ = retriedMessages$.pipe(share<WebSocketPayload>());
-
-    this.messages$!.subscribe(
+    this.messagesSubscription = this.messages$!.subscribe(
       _ => {
         return;
       },
-      (_: Error) => {
+      (error: Error) => {
+        const { message } = error
         this.connectionStatus$.next(BaseConnectionState.disconnected);
+        if (message !== normalClosureMessage) {          
+          console.log('Squawk socket was disconnected due to error:', message)
+        }
       },
       () => {
+        // The clean termination only happens in response to the last
+        // subscription to the observable being unsubscribed, any
+        // other closure is considered an error.
         this.connectionStatus$.next(BaseConnectionState.disconnected);
+        console.log('Squawk socket connection was closed in response to the user')
       },
-    );
-
-    this.connectionStatus$.next(BaseConnectionState.disconnected);
+    )
   }
-
-  errorStream$(): Observable<Event> {
-    return this.errors$.asObservable();
-  }
-
+  
   protected disconnect() {
     const localSub = this.connectionStatus$.subscribe(msg => {
       if (equals(msg, BaseConnectionState.connected)) {
@@ -94,6 +76,10 @@ export default class ServerSocket {
       }
     });
     localSub.unsubscribe();
+    if (this.messagesSubscription) {
+      this.messagesSubscription.unsubscribe();
+    }
+    this.messages$ = null;
   }
 
   protected send(message: string) {

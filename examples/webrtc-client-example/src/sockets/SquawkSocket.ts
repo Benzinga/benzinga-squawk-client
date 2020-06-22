@@ -1,13 +1,13 @@
 import fastStringify from 'fast-json-stable-stringify';
-import ServerSocket, { BaseConnectionState, WebSocketPayload } from './ServerSocket';
+import ServerSocket, { BaseConnectionState } from './ServerSocket';
 
 import { equals, filter as ramdaFilter, includes } from 'ramda';
-import { Observable, Subscription } from 'rxjs';
+import { BehaviorSubject, Observable, Subscription } from 'rxjs';
 import { filter, map, timeout } from 'rxjs/operators';
 
 import uuid from 'uuid/v4';
 
-const PONG_AWAIT_TIME = 1000 * 120;
+const PONG_AWAIT_TIME = 1000 * 60;
 export enum RequestType {
   auth = 'auth',
   joinRoom = 'joinRoom',
@@ -23,7 +23,7 @@ export enum NotificationType {
   mediaOverride = 'mediaOverride',
   newPresenterArrived = 'newPresenterArrived',
   presenterLeft = 'presenterLeft',
-  authResponse = "authResponse"
+  authResponse = 'authResponse',
 }
 
 export interface Presenter {
@@ -54,7 +54,7 @@ export interface MediaOverrideNotification {
 export type Notification =
   | IceCandidateNotification
   | MediaOverrideNotification
-  | PresenterArrivedNotification  
+  | PresenterArrivedNotification
   | PresenterLeftNotification
   | AuthResponseNotification;
 
@@ -66,6 +66,7 @@ export interface RpcRequest {
 interface RpcResponse {
   id: string;
   error?: string;
+  type: string,
 }
 
 export type IceServers = RTCIceServer[];
@@ -86,7 +87,7 @@ export interface ParticipantSocket {
 
 type IncomingMessage = RpcResponse | Notification;
 
-const parseResponse = (response: WebSocketPayload): IncomingMessage => JSON.parse(response as string);
+const parseResponse = (response: string): IncomingMessage => JSON.parse(response);
 
 interface PendingRequest {
   resolve(res: RpcResponse): void;
@@ -95,26 +96,33 @@ interface PendingRequest {
 
 const isResponse = (message: IncomingMessage): message is RpcResponse => 'id' in message;
 
-const isNotification = (message: IncomingMessage): message is Notification => 'type' in message;
+//const isNotification = (message: IncomingMessage): message is Notification => 'type' in message;
+const isNotification = (message: IncomingMessage): message is Notification => message && (equals(message.type.indexOf("Response"),-1) || equals(message.type, NotificationType.authResponse ));
 
 export default class SquawkSocket extends ServerSocket implements ParticipantSocket {
-  private incomingMessages$!: Observable<IncomingMessage>;
-  notifications$!: Observable<Notification>;
-  private pendingRequests = new Map<string, PendingRequest>();
-  private subscription: Subscription | null = null;
-  private pongSubscription: Subscription | null = null;
-  private lastPingIds: string[] = [];
   private ignoreTimeout = false;
+  private incomingMessages$!: Observable<IncomingMessage>;
+  private lastPingIds: string[] = [];
+  notifications$: BehaviorSubject<Notification | null> = new BehaviorSubject<Notification | null>(null);
+  private notificationsSubscriber: Subscription | null = null;
+  private pendingRequests = new Map<string, PendingRequest>();
+  private pongSubscription: Subscription | null = null;
+  private subscription: Subscription | null = null;
+  squawkConnectionStatus$: BehaviorSubject<number> = new BehaviorSubject<number>(BaseConnectionState.disconnected);
   private statusSubscription: Subscription | null = null;
 
   static connect() {
     const socket = new SquawkSocket();
-    socket.connect(window.env.SQUAWK_ADDR + "?jwt=" + window.env.JWT_TOKEN);
-    //socket.connect("ws://localhost:8080/webrtc?jwt=eyJ0eXAiOiJKV1QiLCJraWQiOiJieiIsImFsZyI6IlJTMjU2In0.eyJraWQiOiJieiIsImlzcyI6InRyYWRldG9vbC5jb20iLCJzdWIiOiJkZDFhMjcyMC0xOTQyLTM3ZTktOWE4Ni1lNjgwMmM2NWI5Y2UiLCJpYXQiOjE1ODgwOTg3NjQsIm5iZiI6MTU4ODA5ODY0NCwiZXhwIjoxNTg4MDk4ODg0fQ.JDQwb18w84vqVGA0GySgi65yERSUn8S4jL9x4Tw7MFw3Qeb9lSSu8r4LuDU9CFmmoAk_RkTf6b058ho3IjirB4d3OXVxQOHD0wc1UOxY0Z6d3dO4i_DQ2pi70zxfC3oEvIIsuSrFUndLuiDZruKH1NcPUsJF47FW_nMpPO2c9GVnusXo5eKcvGvNzb4cxjS66_bOIK_bsPw6XvZUDw_DmgooXTXYwWLiAmSs28SFALsG78oIHli6kc9jk-AVyP5ZCXBf_s1gvqrBCrM0JKiGwv5WjrbDoDG4amgssW3I-lZfGHh4_unvDf87MO7cfLX6EvUpYM8VTVvBNyUaQK1A_Q");
+    socket.connect(process.env.SQUAWK_ADDR + "?jwt=" + process.env.JWT_TOKEN);
     return socket;
   }
 
   connect(url: string) {
+    this.squawkConnectionStatus$ = new BehaviorSubject(BaseConnectionState.disconnected);
+    this.notifications$ = new BehaviorSubject<Notification | null>(null);
+    this.connectInit(url);
+  }
+  connectInit(url: string) {
     super.connect(url);
     this.incomingMessages$ = this.messages$!.pipe(map(parseResponse));
     this.pongSubscription = this.incomingMessages$!.pipe(
@@ -128,13 +136,32 @@ export default class SquawkSocket extends ServerSocket implements ParticipantSoc
       _ => {
         if (!this.ignoreTimeout) {
           this.disconnect();
+          this.connectInit(url);
         }
       },
     );
-    this.statusSubscription = this.connectionStatus$.subscribe(msg => {
-      this.ignoreTimeout = equals(msg, BaseConnectionState.disconnected) ? true : false;
-    });
-    this.notifications$ = this.incomingMessages$.pipe(filter(isNotification));
+
+    const statusObserver = {
+      next: (msg: number) => {
+        this.ignoreTimeout = equals(msg, BaseConnectionState.disconnected) ? true : false;
+        this.squawkConnectionStatus$.next(msg);
+      },
+      error: (err: Error) => {
+        this.squawkConnectionStatus$.error(err);
+      },
+    };
+
+    this.statusSubscription = this.connectionStatus$.subscribe(statusObserver);
+
+    const notificationsObserver = {
+      next: (msg: IncomingMessage) => {
+        if (isNotification(msg)) {
+          this.notifications$.next(msg);
+        }
+      },
+    };
+
+    this.notificationsSubscriber = this.incomingMessages$.subscribe(notificationsObserver);
     this.subscription = this.incomingMessages$.pipe(filter(isResponse)).subscribe(this.handleResponse.bind(this));
   }
 
@@ -151,6 +178,10 @@ export default class SquawkSocket extends ServerSocket implements ParticipantSoc
     if (this.statusSubscription) {
       this.statusSubscription.unsubscribe();
       this.statusSubscription = null;
+    }
+    if (this.notificationsSubscriber) {
+      this.notificationsSubscriber.unsubscribe();
+      this.notificationsSubscriber = null;
     }
   }
 
@@ -228,5 +259,7 @@ export default class SquawkSocket extends ServerSocket implements ParticipantSoc
       this.statusSubscription.unsubscribe();
       this.statusSubscription = null;
     }
+    this.squawkConnectionStatus$.complete();
+    this.notifications$.complete();
   }
 }

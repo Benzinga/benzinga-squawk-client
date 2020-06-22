@@ -1,26 +1,43 @@
 {
   "compilerOptions": {
-    "target": "es5",
-    "downlevelIteration": true,
-    "lib": [
-      "dom",
-      "dom.iterable",
-      "esnext"
-    ],
     "allowJs": true,
-    "skipLibCheck": true,
-    "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
-    "strict": true,
+    "checkJs": false,
     "forceConsistentCasingInFileNames": true,
+    "jsx": "react",
+    "lib": ["esnext", "dom", "dom.iterable", "scripthost"],
     "module": "esnext",
     "moduleResolution": "node",
-    "resolveJsonModule": true,
-    "isolatedModules": true,
+    "noErrorTruncation": true,
+    "noImplicitAny": false,
+    "noImplicitReturns": false,
+    "noImplicitThis": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "removeComments": true,
+    "skipLibCheck": true,
+    "sourceMap": true,
+    "strictNullChecks": false,
+    "experimentalDecorators": true,
+    "strictFunctionTypes": false,
+    "strict": false,
+    "target": "es5",
     "noEmit": true,
-    "jsx": "react"
+    "plugins": [
+      {
+        "configFile": "./tslint.json",
+        "name": "tslint-language-service",
+        "ignoreDefinitionFiles": true
+      }
+    ],
   },
   "include": [
-    "src"
+    "./src/global.d.ts",
+    "./src/index.web.tsx",
+  ],
+  "exclude": [
+    "node_modules",
+    "./src/**/__test__/*",
+    "./src/assets/**/*"
   ]
 }
