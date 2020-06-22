@@ -352,7 +352,7 @@ export class App extends Component<Props, State> {
         </div>
         <div id="content">
           <p>
-            <a href="https://www.benzinga.com/apis/cloud-product/benzinga-squawk/" target="blank">Benzinga Squawk</a> is built on top of WebRTC. This is a sample WebRTC client. To know more about APIs please visit <a href="https://docs.benzinga.io/benzinga/squawk-v3.html" target="blank">docs</a>.
+            <a href="https://www.benzinga.com/apis/cloud-product/benzinga-squawk/" target="blank">Benzinga Squawk</a> is built on top of WebRTC. This is a sample WebRTC client. To know more about APIs please visit <a href="https://docs.benzinga.io/benzinga/squawk-v3.html#using-webrtc" target="blank">docs</a>.
           </p>
           <div id="squawk-box">                       
               {this.renderPlayToggle()} 
