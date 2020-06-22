@@ -2,7 +2,7 @@
 
 ## Overview
 
-This Squawk WebRTC Client demonstrates how to connect to squawk over WebRTC using signaling messages documented at https://docs.benzinga.io/benzinga/squawk-v3.html#using-rtp
+This Squawk WebRTC Client demonstrates how to connect to squawk over WebRTC using signaling messages documented at https://docs.benzinga.io/benzinga/squawk-v3.html#using-webrtc
 
 - [npm](https://nodejs.org/en/)
 - [yarn](https://classic.yarnpkg.com/en/docs/install#debian-stable)
