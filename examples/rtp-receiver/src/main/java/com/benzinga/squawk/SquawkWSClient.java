@@ -98,8 +98,12 @@ public class SquawkWSClient extends WebSocketClient {
               this.closeWS();
             } else {            		
               pingTask = pingSchedulerService.scheduleAtFixedRate(
-	            () -> {	              
-	              this.sendPing();
+	            () -> {
+	              try {	
+	            	this.sendPing();
+	              } catch (Exception e) {
+	            	log.error("Error sending ping request", e);  
+	              }
 	            },
 	            PING_INTERVAL_SECONDS, 
 	            PING_INTERVAL_SECONDS, 
