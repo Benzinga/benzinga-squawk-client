@@ -16,9 +16,9 @@ One can connect to squawk in the following ways:
 
 This particular demo contains WebRTC demo using Squawk WebRTC SDK. 
 
-###[API documentation](https://www.npmjs.com/package/@benzinga/benzinga-squawk-sdk)
+### [API documentation](https://www.npmjs.com/package/@benzinga/benzinga-squawk-sdk)
 
-###How to run the demo ?
+### How to run the demo ?
 
  - You need a valid Session, API Key, or JWT in order to run the demo. Please visit [the core API doc](https://docs.benzinga.io/benzinga/squawk-v4.html#Authenticate) on how to get a valid key
  - Install npm package
