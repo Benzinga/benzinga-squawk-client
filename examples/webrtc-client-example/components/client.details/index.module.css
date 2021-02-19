@@ -1,0 +1,27 @@
+.container {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+    flex-wrap: wrap;
+}
+
+.input_container {
+    margin-top: 1%;
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+    flex-wrap: wrap;
+}
+
+.name {
+    width: 20%;
+}
+.details {
+    width: 20%;
+}
+.details select {
+    width: 100%;
+}
+.details input {
+    width: 100%;
+}

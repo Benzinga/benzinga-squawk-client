@@ -1,0 +1,30 @@
+.container {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+    flex-wrap: wrap;
+    margin-left: 2%;
+}
+
+.title {
+    margin-left: 3%;
+    margin-top: 3%;
+    width: 100%;
+    font-size: 2em;
+    font-weight: 500;
+    border-bottom: 1px solid #ccc;
+}
+
+.demo_list_container {
+    margin-top: 2%;
+    margin-left: 5%;
+}
+.demo_container {
+    margin-bottom: 5%;
+}
+
+.demo_link {
+    color: #6fa8dc;
+    font-size: 1.1em;
+    text-decoration: none;
+}

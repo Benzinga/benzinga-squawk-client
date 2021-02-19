@@ -1,0 +1,21 @@
+.demo_details {
+    margin-top: 2%;
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+    flex-wrap: wrap;
+}
+
+.demo_title {
+    width: 100%;
+    font-weight: 500;
+    font-size: 2em;
+    border-bottom: 1px solid #ccc;
+}
+
+.demo_info {
+    margin-top: 1%;
+    width: 100%;
+    font-size: 0.90em;
+    font-weight: bold;
+}

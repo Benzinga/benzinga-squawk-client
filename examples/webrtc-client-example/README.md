@@ -1,31 +1,37 @@
-# Squawk WebRTC Client 
+![alt text](https://raw.githubusercontent.com/Benzinga/benzinga-python-client/master/logo/Benzinga_Logo-navy.png)
+
+# benzinga-squawk-client
 
 ## Overview
+Squawk is a realtime broadcast service from Benzinga which includes important headlines, price movement, and rumors as stories develop to give traders and investors news in the fastest and most convenient form. This repo icludes sample applications, which aims to elaborate how you can connect to Squawk.
 
-This Squawk WebRTC Client demonstrates how to connect to squawk over WebRTC using signaling messages documented at https://docs.benzinga.io/benzinga/squawk-v3.html#using-webrtc
 
-- [npm](https://nodejs.org/en/)
-- [yarn](https://classic.yarnpkg.com/en/docs/install#debian-stable)
-- Squawk WebSocket address. Contact the Benzinga licensing team at  licensing@benzinga.com for more details.
-- JWT token. For authentication, squawk uses JWT. We recommend using asymmetric JWT. For that, you need to share your the corresponding public key with Benzinga. Please get in touch at licensing@benzinga.com for sharing the public key or more information on authentication. 
+## Connecting to Squawk
 
-## How to Build and Run
+One can connect to squawk in the following ways:
 
-Once you have shared the public key for JWT with Benzinga and got the squawk address to test for, replace corresponding values in .env file as `SQUAWK_ADDR` and `JWT_TOKEN`. 
+1. **Connect directly to squawk through WebRTC:** With this option, you can connect directly to squawk from your web application and hear it from WebRTC supported browsers. More Information can be found at [https://docs.benzinga.io/benzinga/squawk-v4.html#using-webrtc](https://docs.benzinga.io/benzinga/squawk-v4.html#using-webrtc)
 
-Use the yarn package manager to run, test, and build the app.
+2. **Connect for receiving RTP stream:** This option is the right choice if you want to re-broadcast squawk through your media server to your users. More information can be found at https://docs.benzinga.io/benzinga/squawk-v3.html#using-rtp
 
-#### `yarn start`
+This particular demo contains WebRTC demo using Squawk WebRTC SDK. 
 
-Runs the app in the development mode.<br />
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+###[API documentation](https://www.npmjs.com/package/@benzinga/benzinga-squawk-sdk)
 
-#### `yarn test`
+###How to run the demo ?
 
-Launches the test runner in the interactive watch mode.<br />
+ - You need a valid Session, API Key, or JWT in order to run the demo. Please visit [the core API doc](https://docs.benzinga.io/benzinga/squawk-v4.html#Authenticate) on how to get a valid key
+ - Install npm package
+    - `npm ci`
+ - Run the demo
+    - `npm run dev`
+ - Access the demo page from your browser ( Chrome recommended ) 
+    - [http://localhost:3000/](http://localhost:3000/)
 
-#### `yarn build`
 
-Builds the app for production to the `build` folder. It correctly bundles React in production mode and optimizes the build for the best performance.
-
-The build is minified and the filenames include the hashes.<br />
+### About integrations
+ - If you want to look into the core example implementation, you can visit directly
+   - [listener core](/examples/webrtc-client-example/library/listener.integration/index.ts)
+     - [react-integration](/examples/webrtc-client-example/components/listener/index.ts)
+   - [broadcaster core](/examples/webrtc-client-example/library/publisher.integration/index.ts)
+     - [react-integration](/examples/webrtc-client-example/components/broadcaster/index.ts)

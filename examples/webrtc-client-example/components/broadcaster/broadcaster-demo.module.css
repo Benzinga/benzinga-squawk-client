@@ -1,0 +1,42 @@
+.container {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+    flex-wrap: wrap;
+}
+
+.sub_container {
+    margin-top: 1%;
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+    flex-wrap: wrap;
+}
+
+.control_field_contain {
+    margin-top: 1%;
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+    flex-wrap: wrap;
+}
+
+.control_field_contain > button {
+    cursor: pointer;
+    text-align: center;
+    margin-right: 1%;
+    width: 10em;
+    background-color: #d84a38;
+    border: none;
+    border-radius: 2px;
+    color: white;
+    font-family: 'Roboto', sans-serif;
+    font-size: 0.8em;
+    padding: 0.5em 0.7em 0.6em 0.7em;
+}
+
+.control_field_contain > button[disabled] {
+    cursor: unset;
+    color: #ccc;
+}
+
