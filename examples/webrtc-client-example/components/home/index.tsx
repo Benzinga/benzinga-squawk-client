@@ -4,7 +4,7 @@ import { pageTitleBroadcaster, sdkDemo } from '../../library/constants'
 import Link from 'next/link'
 import styles from './home.module.css'
 
-const HomeContianer = () => {
+const HomeContainer = () => {
   return (
     <div className={styles.container}>
       <Head>
@@ -33,4 +33,4 @@ const HomeContianer = () => {
   )
 }
 
-export { HomeContianer }
+export { HomeContainer }
