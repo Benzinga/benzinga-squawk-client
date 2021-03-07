@@ -1,43 +1,19 @@
 {
   "compilerOptions": {
+    "target": "es5",
+    "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
-    "allowSyntheticDefaultImports": true,
-    "checkJs": false,
+    "skipLibCheck": true,
+    "strict": false,
     "forceConsistentCasingInFileNames": true,
-    "jsx": "react",
-    "lib": ["esnext", "dom", "dom.iterable", "scripthost"],
+    "noEmit": true,
+    "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "node",
-    "noErrorTruncation": true,
-    "noImplicitAny": false,
-    "noImplicitReturns": false,
-    "noImplicitThis": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "removeComments": true,
-    "skipLibCheck": true,
-    "sourceMap": true,
-    "strictNullChecks": false,
-    "experimentalDecorators": true,
-    "strictFunctionTypes": false,
-    "strict": false,
-    "target": "es5",
-    "noEmit": true,
-    "plugins": [
-      {
-        "configFile": "./tslint.json",
-        "name": "tslint-language-service",
-        "ignoreDefinitionFiles": true
-      }
-    ],
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve"
   },
-  "include": [
-    "./src/global.d.ts",
-    "./src/index.web.tsx",
-  ],
-  "exclude": [
-    "node_modules",
-    "./src/**/__test__/*",
-    "./src/assets/**/*"
-  ]
+  "exclude": ["node_modules", ".next", "out"],
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx"]
 }
