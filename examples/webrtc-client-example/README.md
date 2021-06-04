@@ -22,7 +22,7 @@ This particular demo contains WebRTC demo using Squawk WebRTC SDK.
 
 ### About integrations
  - If you want to look into the core example implementation, you can visit directly
-   - [listener core](/examples/webrtc-client-example/library/listener.integration/index.ts)
+   - [listener core](/examples/webrtc-client-example/library/listener.integration/index.tsx)
      - [react-integration](/examples/webrtc-client-example/components/listener/index.ts)
    - [broadcaster core](/examples/webrtc-client-example/library/publisher.integration/index.ts)
-     - [react-integration](/examples/webrtc-client-example/components/broadcaster/index.ts)
+     - [react-integration](/examples/webrtc-client-example/components/broadcaster/index.tsx)
