@@ -14,23 +14,23 @@ const HomeContainer = () => {
       <div className={styles.title}>{sdkDemo}</div>
       <div className={styles.demo_list_container}>
         <div className={styles.demo_container}>
-          <Link href={'/broadcaster-demo'}>
-            <a className={styles.demo_link}>{'Broadcaster demo'}</a>
+          <Link href={'/broadcaster-demo'} className={styles.demo_link}>
+            {'Broadcaster demo'}
           </Link>
         </div>
         <div className={styles.demo_container}>
-          <Link href={'/listener-demo'}>
-            <a className={styles.demo_link}>{'Listener demo'}</a>
+          <Link href={'/listener-demo'} className={styles.demo_link}>
+            {'Listener demo'}
           </Link>
         </div>
         <div className={styles.demo_container}>
-          <Link href={'/multiple-listener-demo'}>
-            <a className={styles.demo_link}>{'Multiple listeners demo'}</a>
+          <Link href={'/multiple-listener-demo'} className={styles.demo_link}>
+            {'Multiple listeners demo'}
           </Link>
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 export { HomeContainer }
