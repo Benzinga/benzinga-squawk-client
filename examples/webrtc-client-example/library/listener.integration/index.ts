@@ -2,13 +2,19 @@ import SquawkSDK, { ListenerCallback, SquawkJS, TransportConfig } from '@benzing
 
 class BenzingaListenerIntegration {
   private _transportConfig = {
-    maxRetry: 10000,
+    connectionTimeoutInMs: 15000,
+    requestTimeoutInMs: 15000,
     serverAddress: 'wss://squawk-lb.zingbot.bz/ws/v4/squawk',
   } as TransportConfig
   private _client: SquawkJS
 
   async initializeSDK(apiKeyType: string, key: string, callback: ListenerCallback): Promise<any> {
-    let builder = new SquawkSDK.Builder(this._transportConfig, callback)
+    let builder = new SquawkSDK.Builder({
+      maxRetry: 10000,
+      maxRetryIntervalInMs: 15000,
+      retryIntervalBackoffInMs: 15000,
+      retryIntervalInMs: 15000,
+    },this._transportConfig, callback)
     if (apiKeyType === 'api-key') builder = builder.withApiKey()
     else if (apiKeyType === 'token') builder = builder.withJWT()
     else {
