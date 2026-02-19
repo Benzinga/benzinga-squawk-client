@@ -9,12 +9,16 @@ class BenzingaListenerIntegration {
   private _client: SquawkJS
 
   async initializeSDK(apiKeyType: string, key: string, callback: ListenerCallback): Promise<any> {
-    let builder = new SquawkSDK.Builder({
-      maxRetry: 10000,
-      maxRetryIntervalInMs: 15000,
-      retryIntervalBackoffInMs: 15000,
-      retryIntervalInMs: 15000,
-    },this._transportConfig, callback)
+    let builder = new SquawkSDK.Builder(
+      {
+        maxRetry: 10000,
+        maxRetryIntervalInMs: 15000,
+        retryIntervalBackoffInMs: 15000,
+        retryIntervalInMs: 15000,
+      },
+      this._transportConfig,
+      callback,
+    )
     if (apiKeyType === 'api-key') builder = builder.withApiKey()
     else if (apiKeyType === 'token') builder = builder.withJWT()
     else {
@@ -26,8 +30,8 @@ class BenzingaListenerIntegration {
     return this._client.initialize(key)
   }
 
-  async startListening(channelId: number, element: any): Promise<any> {
-    return this._client.subscribeChannel(channelId, element)
+  async startListening(channelId: number, _element: any): Promise<any> {
+    return this._client.subscribeChannel(channelId)
   }
 
   async stopListening(channelId: number): Promise<void> {
