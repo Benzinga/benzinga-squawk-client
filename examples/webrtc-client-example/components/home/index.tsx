@@ -30,7 +30,7 @@ const HomeContainer = () => {
         </div>
       </div>
     </div>
-  );
+  )
 }
 
 export { HomeContainer }

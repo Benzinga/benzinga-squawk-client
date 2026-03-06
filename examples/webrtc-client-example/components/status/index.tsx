@@ -25,30 +25,30 @@ const ViewStatus = ({
       <div className={styles.sub_container}>
         <div className={styles.name}>{'$Transport State : '}</div>
         <div className={styles.details}>
-          <TextTransition text={transportState} />
+          <TextTransition>{transportState}</TextTransition>
         </div>
       </div>
       <div className={styles.sub_container}>
         <div className={styles.name}>{'$RTC State : '}</div>
         <div className={styles.details}>
-          <TextTransition text={channelId} />
+          <TextTransition>{channelId}</TextTransition>
         </div>
         <div className={styles.details}>{'|'}</div>
         <div className={styles.details}>
-          <TextTransition text={rtcState} />
+          <TextTransition>{rtcState}</TextTransition>
         </div>
       </div>
       <div className={styles.sub_container}>
         <div className={styles.name}>{'$Audio State : '}</div>
         <div className={styles.details}>
-          <TextTransition text={isMuted ? 'Muted' : 'Not Muted'} />
+          <TextTransition>{isMuted ? 'Muted' : 'Not Muted'}</TextTransition>
         </div>
       </div>
       {isListener && (
         <div className={styles.sub_container}>
           <div className={styles.name}>{'$Broadcaster State : '}</div>
           <div className={styles.details}>
-            <TextTransition text={broadcasterState} />
+            <TextTransition>{broadcasterState}</TextTransition>
           </div>
         </div>
       )}
