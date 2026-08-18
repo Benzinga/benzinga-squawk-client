@@ -13,6 +13,9 @@
     "test": "jest",
     "test-all": "npm run lint && npm run test && npm run type-check"
   },
+  "engines": {
+    "node": ">=20.9.0"
+  },
   "husky": {
     "hooks": {
       "pre-commit": "lint-staged",
