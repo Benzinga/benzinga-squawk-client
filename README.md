@@ -3,7 +3,7 @@
 # benzinga-squawk-client
 
 ## Overview
-Squawk is a realtime broadcast service from Benzinga which includes important headlines, price movement, and rumors as stories develop to give traders and investors news in the fastest and most convenient form. This repo icludes sample applications, which aims to elaborate how you can connect to Squawk.
+Squawk is a realtime broadcast service from Benzinga which includes important headlines, price movement, and rumors as stories develop to give traders and investors news in the fastest and most convenient form. This repo includes sample applications, which aim to elaborate how you can connect to Squawk.
 
 
 ## Connecting to Squawk
