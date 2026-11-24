@@ -12,7 +12,7 @@ This particular demo contains WebRTC demo using Squawk WebRTC SDK.
 
 ### How to run the demo?
 
-- You need a valid Session, API Key, or JWT in order to run the demo. Please visit [the core API doc](https://docs.benzinga.io/benzinga/squawk-v4.html#Authenticate) on how to get a valid key.
+- You need a valid Session, API Key, or JWT in order to run the demo. Please visit [the core API doc](https://docs.benzinga.com/squawk-reference/squawk-v4#authenticate) on how to get a valid key.
 - Install npm package
   - `npm ci`
 - Run the demo
